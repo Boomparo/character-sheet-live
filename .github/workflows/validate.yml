@@ -1,7 +1,7 @@
 name: Validate live sheet
 on:
   push:
-    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete]
+    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist]
   pull_request:
     branches: [main]
 jobs:
@@ -22,6 +22,10 @@ jobs:
         run: node --check js/ui/origin-builder-v7s.js
       - name: Experience extras syntax
         run: node --check js/ui/experience-extras-v8.js
+      - name: Builder checklist syntax
+        run: node --check js/ui/builder-checklist-v8.js
+      - name: Swipe controller syntax
+        run: node --check js/ui/swipe-controller-v8.js
       - name: Import syntax
         run: node --check js/ui/import-v7s.js
       - name: Gameplay loader syntax
@@ -56,6 +60,7 @@ jobs:
           test -s css/gameplay-polish-v7s.css
           test -s css/experience-v7s.css
           test -s css/experience-v8.css
+          test -s css/swipe-v8.css
           test -s manifest.webmanifest
           test -s assets/icon.svg
           test -s assets/treasure-ornament.svg
@@ -90,7 +95,14 @@ jobs:
           grep -q 'campaign-origin-v7s.js' js/ui/gameplay-polish-v7s.js
           grep -q 'background-extras-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'experience-extras-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'css/swipe-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'import-v7s.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'builderLevelChecklistHost' js/ui/builder-checklist-v8.js
+          grep -q 'pointermove' js/ui/swipe-controller-v8.js
+          grep -q 'startIndex+(dx<0?1:-1)' js/ui/swipe-controller-v8.js
+          grep -q '#characterPage #levelChecklist' css/swipe-v8.css
           grep -q 'City Goblin' js/core/campaign-origin-v7s.js
           grep -q 'Darkvision 60 ft' js/core/campaign-origin-v7s.js
           grep -q 'Lukyho univerzální background' js/core/campaign-origin-v7s.js
