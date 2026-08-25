@@ -3,6 +3,7 @@
   const queue=[
     'js/classes/treasure-hunter/feature-names-v8.js',
     'js/core/campaign-origin-v7s.js',
+    'js/core/background-extras-v8.js',
     'js/ui/actions-v7s.js',
     'js/ui/character-builder-v7s.js',
     'js/ui/inventory-containers-v7s.js',
