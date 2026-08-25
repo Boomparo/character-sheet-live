@@ -1,12 +1,12 @@
 (function(){
   const KEY='character-sheet-v7s';
   const OLD_KEY='occultist-sheet-v1';
-  const SCHEMA_VERSION=7;
+  const SCHEMA_VERSION=8;
   const A=['STR','DEX','CON','INT','WIS','CHA'];
   const clone=v=>JSON.parse(JSON.stringify(v));
 
   function baseState(){return {
-    schemaVersion:SCHEMA_VERSION,appVersion:'7s.2.0-beyond-polish',
+    schemaVersion:SCHEMA_VERSION,appVersion:'7s.3.0-modular',
     character:{
       name:'',race:'',classKey:'treasureHunter',level:1,portrait:'',
       hp:{current:10,max:10,temp:0,auto:true},
@@ -14,11 +14,13 @@
       ac:10,speed:30,initiativeBonus:0,inspiration:false,
       abilities:{STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10},
       conditions:[],exhaustion:0,skills:{},
+      rollModes:{initiative:'normal',skills:{}},
+      customActions:[],
       damageDefenses:{resistances:[],immunities:[],vulnerabilities:[],conditionImmunities:[]},
       proficiencies:{languages:[],vehicles:[],tools:["Thieves' Tools","Navigator's Tools"],weapons:[],armor:['Light Armor'],senses:[],defenses:[]},
-      gear:{money:{cp:0,sp:0,gp:0,pp:0},weapons:[{id:'whip',name:'Bič',attackAbility:'DEX',damage:'1d6',damageType:'Slashing',mastery:'Slow'}],armor:[],inventory:[]}
+      gear:{money:{cp:0,sp:0,gp:0,pp:0},weapons:[{id:'whip',name:'Whip',attackAbility:'DEX',damage:'1d6',damageType:'Slashing',mastery:'Slow'}],armor:[],inventory:[]}
     },
-    classes:{treasureHunter:{coolUsed:0,featureUses:{},relics:[],ancientLanguages:['','',''],vehicles:['',''],expertise:'',weaponMasteries:['','']},occultist:{}},
+    classes:{treasureHunter:{coolUsed:0,featureUses:{},relics:[],ancientLanguages:['','',''],vehicles:['',''],expertise:'',weaponMasteries:['',''],choices:{}},occultist:{}},
     campaign:{npcs:[],notes:[],tarot:{}},
     ui:{page:0,favoriteFeatures:[],featureFilter:'all'}
   }}
@@ -28,9 +30,10 @@
   function clamp(n,a,b){return Math.max(a,Math.min(b,num(n,a)))}
 
   function normalize(s){
+    s.schemaVersion=SCHEMA_VERSION;s.appVersion='7s.3.0-modular';
     const c=s.character||(s.character={});
     c.level=clamp(c.level,1,20);
-    c.conditions=Array.isArray(c.conditions)?c.conditions:[];
+    c.conditions=Array.isArray(c.conditions)?c.conditions.filter(Boolean):[];
     if(c.conditions.includes('Exhaustion')){c.conditions=c.conditions.filter(x=>x!=='Exhaustion');c.exhaustion=Math.max(1,num(c.exhaustion,0));}
     c.exhaustion=clamp(c.exhaustion,0,6);
     c.hitDice=c.hitDice&&typeof c.hitDice==='object'?c.hitDice:{};
@@ -38,9 +41,20 @@
     c.hitDice.d10.spent=clamp(c.hitDice.d10.spent,0,c.level);
     c.damageDefenses=c.damageDefenses&&typeof c.damageDefenses==='object'?c.damageDefenses:{};
     ['resistances','immunities','vulnerabilities','conditionImmunities'].forEach(k=>{if(!Array.isArray(c.damageDefenses[k]))c.damageDefenses[k]=[];c.damageDefenses[k]=[...new Set(c.damageDefenses[k].filter(Boolean))]});
+    c.rollModes=c.rollModes&&typeof c.rollModes==='object'?c.rollModes:{initiative:'normal',skills:{}};
+    if(!['normal','advantage','disadvantage'].includes(c.rollModes.initiative))c.rollModes.initiative='normal';
+    c.rollModes.skills=c.rollModes.skills&&typeof c.rollModes.skills==='object'?c.rollModes.skills:{};
+    if(!Array.isArray(c.customActions))c.customActions=[];
     if(!c.hp||typeof c.hp!=='object')c.hp={current:10,max:10,temp:0,auto:true};
     c.hp.max=Math.max(1,num(c.hp.max,10));c.hp.current=clamp(c.hp.current,0,c.hp.max);c.hp.temp=Math.max(0,num(c.hp.temp,0));
-    s.appVersion='7s.2.0-beyond-polish';
+    if(!c.gear||typeof c.gear!=='object')c.gear=baseState().character.gear;
+    if(!Array.isArray(c.gear.inventory))c.gear.inventory=[];
+    if(!Array.isArray(c.gear.weapons))c.gear.weapons=[];
+    const th=s.classes?.treasureHunter||(s.classes||(s.classes={})).treasureHunter={};
+    if(!th.choices||typeof th.choices!=='object')th.choices={};
+    if(!Array.isArray(th.ancientLanguages))th.ancientLanguages=['','',''];
+    if(!Array.isArray(th.vehicles))th.vehicles=['',''];
+    if(!Array.isArray(th.weaponMasteries))th.weaponMasteries=['',''];
     return s;
   }
 
@@ -90,5 +104,5 @@
     const scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c.toDataURL('image/jpeg',quality);
   }
 
-  window.V7SStateV7s={KEY,OLD_KEY,SCHEMA_VERSION,A,get:()=>state,update,replace,save,flush,subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},modifier,signed,clone,imageToThumb,normalize};
+  window.V7SStateV7s={KEY,OLD_KEY,SCHEMA_VERSION,A,get:()=>state,update,replace,save,flush,fresh:()=>normalize(baseState()),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},modifier,signed,clone,imageToThumb,normalize};
 })();
