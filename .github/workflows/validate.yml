@@ -1,9 +1,10 @@
-name: Validate live sheet
+name: Validate V9 stabilization
 on:
   push:
-    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist, v8-native-swipe-restore, v8-hp-temp-manager]
+    branches: [main, v9-stabilization]
   pull_request:
     branches: [main]
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -12,144 +13,34 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Feature names syntax
-        run: node --check js/classes/treasure-hunter/feature-names-v8.js
-      - name: Campaign origin syntax
-        run: node --check js/core/campaign-origin-v7s.js
-      - name: Background extras syntax
-        run: node --check js/core/background-extras-v8.js
-      - name: Origin builder syntax
-        run: node --check js/ui/origin-builder-v7s.js
-      - name: Experience extras syntax
-        run: node --check js/ui/experience-extras-v8.js
-      - name: Builder checklist syntax
-        run: node --check js/ui/builder-checklist-v8.js
-      - name: Swipe controller syntax
-        run: node --check js/ui/swipe-controller-v8.js
-      - name: HP manager syntax
-        run: node --check js/ui/hp-manager-v8.js
-      - name: Import syntax
-        run: node --check js/ui/import-v7s.js
-      - name: Gameplay loader syntax
-        run: node --check js/ui/gameplay-polish-v7s.js
-      - name: Existing JavaScript syntax
+      - name: JavaScript syntax
         run: |
-          node --check js/classes/treasure-hunter/data-v7s.js
-          node --check js/classes/treasure-hunter/relics-v7s.js
-          node --check js/classes/treasure-hunter/choices-v7s.js
-          node --check js/core/state-v7s.js
-          node --check js/core/rules-2024.js
-          node --check js/core/derived-v7s.js
-          node --check js/core/roster-v7s.js
-          node --check js/core/catalog-srd.js
-          node --check js/ui/portrait-cropper.js
-          node --check js/ui/app-v8.js
-          node --check js/ui/modular-enhancements.js
-          node --check js/ui/stat-inspector-v7s.js
-          node --check js/ui/rest-manager-v7s.js
-          node --check js/ui/actions-v7s.js
-          node --check js/ui/character-builder-v7s.js
-          node --check js/ui/inventory-containers-v7s.js
-          node --check service-worker.js
-      - name: Required files
+          for file in \
+            js/classes/treasure-hunter/data-v7s.js \
+            js/classes/treasure-hunter/relics-v7s.js \
+            js/classes/treasure-hunter/choices-v7s.js \
+            js/classes/treasure-hunter/content-v9.js \
+            js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
+            js/core/derived-v9.js js/core/commands-v9.js js/core/roster-v9.js \
+            js/core/catalog-srd.js js/ui/portrait-cropper.js js/ui/app-v9.js service-worker.js
+          do
+            node --check "$file"
+          done
+      - name: Domain and architecture behavior
+        run: node --test tests/v9-domain.test.js
+      - name: Static shell integrity
         run: |
           test -s index.html
-          test -s css/v7s.css
-          test -s css/ux-v7s.css
-          test -s css/modular-v7s.css
-          test -s css/enhancements-v7s.css
-          test -s css/compact-ux-v7s.css
-          test -s css/gameplay-polish-v7s.css
-          test -s css/experience-v7s.css
-          test -s css/experience-v8.css
-          test -s css/swipe-v8.css
-          test -s css/hp-v8.css
-          test -s js/ui/hp-manager-v8.js
           test -s manifest.webmanifest
+          test -s css/v9.css
           test -s assets/icon.svg
-          test -s assets/treasure-ornament.svg
-      - name: Treasure Hunter data integrity
-        run: |
-          node <<'NODE'
-          global.window={};
-          require('./js/classes/treasure-hunter/data-v7s.js');
-          require('./js/classes/treasure-hunter/relics-v7s.js');
-          require('./js/classes/treasure-hunter/choices-v7s.js');
-          require('./js/classes/treasure-hunter/feature-names-v8.js');
-          const T=window.TreasureHunterDataV7s,R=window.TreasureHunterRelicsV7s;
-          if(R.length!==38) throw new Error(`Expected 38 relics, got ${R.length}`);
-          if(new Set(R.map(x=>x.id)).size!==38) throw new Error('Duplicate relic ids');
-          const counts=R.reduce((o,r)=>(o[r.level]=(o[r.level]||0)+1,o),{}),expected={3:14,6:9,10:6,13:4,18:5};
-          for(const [l,n] of Object.entries(expected)) if(counts[l]!==n) throw new Error(`Relic prerequisite level ${l}: expected ${n}, got ${counts[l]||0}`);
-          if(R.some(r=>!r.fullText||r.fullText.length<25)) throw new Error('Missing complete relic text');
-          if(T.features.some(f=>!f.fullText||f.fullText.length<20)) throw new Error('Missing feature text');
-          if(T.features.some(f=>f.id==='swinging')) throw new Error('Swinging must be merged into Swing');
-          if(!T.features.find(f=>f.id==='swing')?.fullText.includes('dvojnásobku')) throw new Error('Merged Swing rule incomplete');
-          if(T.features.find(f=>f.id==='swing')?.name!=='Swing') throw new Error('Canonical Swing label missing');
-          if(T.features.find(f=>f.id==='not-dead-yet')?.name!=="I'm Not Dead Yet") throw new Error('Canonical feature names not applied');
-          if(T.coolTotal(20)!==20||T.coolDie(16)!=='d12'||T.pb(17)!==6) throw new Error('Progression broken');
-          if(JSON.stringify(T.relicLimit(14))!==JSON.stringify([5,5,10])) throw new Error('Relic capacity broken');
-          if(!Array.isArray(T.classSkills)||T.classSkills.length!==14) throw new Error('Treasure Hunter class skill choices missing');
-          for(const id of ['ancient-languages','drivers-license','specialized-expertise','weapon-mastery','asi-4','asi-8','asi-12','asi-16','epic-boon']) if(!T.choiceDefinitions[id]) throw new Error(`Missing choices for ${id}`);
-          console.log('Treasure Hunter data ok',counts);
-          NODE
-      - name: Experience regression guards
-        run: |
-          grep -q 'feature-names-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'campaign-origin-v7s.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'background-extras-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'experience-extras-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'hp-manager-v8.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'css/swipe-v8.css' js/ui/gameplay-polish-v7s.js
-          grep -q 'css/hp-v8.css' js/ui/gameplay-polish-v7s.js
-          grep -q 'import-v7s.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'NATIVE_SWIPE_RESTORED' js/ui/swipe-controller-v8.js
-          ! grep -q 'pointermove' js/ui/swipe-controller-v8.js
-          ! grep -q 'setPointerCapture' js/ui/swipe-controller-v8.js
-          grep -q 'touch-action:pan-x pan-y' css/swipe-v8.css
-          grep -q 'scroll-snap-type:x mandatory' css/swipe-v8.css
-          grep -q '#characterPage #levelChecklist' css/swipe-v8.css
-          grep -q 'h.temp-=absorbed' js/ui/hp-manager-v8.js
-          grep -q 'hpAmountWheel' js/ui/hp-manager-v8.js
-          grep -q 'hpAmountInput' js/ui/hp-manager-v8.js
-          grep -q 'City Goblin' js/core/campaign-origin-v7s.js
-          grep -q 'Darkvision 60 ft' js/core/campaign-origin-v7s.js
-          grep -q 'Lukyho univerzální background' js/core/campaign-origin-v7s.js
-          grep -q 'Defence' js/core/campaign-origin-v7s.js
-          grep -q 'Resilient' js/core/campaign-origin-v7s.js
-          grep -q 'Savage Attacker' js/core/campaign-origin-v7s.js
-          grep -q 'Tough' js/core/campaign-origin-v7s.js
-          grep -q 'Luck Points' js/core/background-extras-v8.js
-          grep -q 'Battle Medic' js/core/background-extras-v8.js
-          grep -q 'Origin Features' js/core/background-extras-v8.js
-          grep -q 'COMBAT MODE' js/ui/experience-extras-v8.js
-          grep -q 'Death Saves' js/ui/experience-extras-v8.js
-          grep -q 'Roll History' js/ui/experience-extras-v8.js
-          grep -q 'ATTUNEMENT' js/ui/experience-extras-v8.js
-          grep -q 'LEVEL .* CHECKLIST' js/ui/experience-extras-v8.js
-          grep -q 'HIT ' js/ui/experience-extras-v8.js
-          grep -q 'DMG ' js/ui/experience-extras-v8.js
-          grep -q 'character-craft' js/ui/import-v7s.js
-          grep -q 'v7s-simple-character' js/ui/import-v7s.js
-          grep -q 'Import JSON' js/ui/import-v7s.js
-          grep -q 'treasure-ornament.svg' css/experience-v8.css
-          grep -q "\['attack','ATTACKS'\]" js/ui/actions-v7s.js
-          grep -q 'WEAPON ATTACKS' js/ui/actions-v7s.js
-          grep -q 'FAVORITES' js/ui/actions-v7s.js
-          grep -q "'attack-slide':'indy-slide'" js/ui/actions-v7s.js
-          grep -q 'data-open-builder' js/ui/character-builder-v7s.js
-          grep -q 'PROGRESSION' js/ui/character-builder-v7s.js
-          grep -q 'Class Skill Proficiencies' js/ui/character-builder-v7s.js
-          grep -q 'data-choice-view' js/ui/character-builder-v7s.js
-          grep -q 'Stored in' js/ui/inventory-containers-v7s.js
-          grep -q 'Use as container' js/ui/inventory-containers-v7s.js
-          grep -q 'statSaveRoll' js/ui/stat-inspector-v7s.js
-          grep -q 'statInitRoll' js/ui/stat-inspector-v7s.js
-          grep -q "unarmored:{name:'Unarmored',base:10,dex:true" js/core/derived-v7s.js
-          grep -q 'ring of protection' js/core/derived-v7s.js
-          grep -q 'cloak of protection' js/core/derived-v7s.js
-          grep -q 'Immunities' js/core/rules-2024.js
-          grep -q "\['Thunder','Thunder'\]" js/core/rules-2024.js
-          ! grep -q "Imunita" js/core/rules-2024.js
+          grep -q 'js/core/state-v9.js' index.html
+          grep -q 'js/core/commands-v9.js' index.html
+          grep -q 'js/ui/app-v9.js' index.html
+          grep -q 'css/v9.css' index.html
+          ! grep -q 'js/ui/gameplay-polish-v7s.js' index.html
+          ! grep -q 'js/ui/modular-enhancements.js' index.html
+          ! grep -q 'MutationObserver' js/ui/app-v9.js
+          ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
+          grep -q 'scroll-snap-type:x mandatory' css/v7s.css
+          grep -q 'character-sheet-v9-stabilization-1' service-worker.js

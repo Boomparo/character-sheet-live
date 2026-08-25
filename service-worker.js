@@ -1,5 +1,49 @@
-const CACHE='character-sheet-v8-stability-npc-2';
-const SHELL=['./','./index.html','./css/v7s.css','./css/ux-v7s.css','./css/modular-v7s.css','./css/enhancements-v7s.css','./css/compact-ux-v7s.css','./css/gameplay-polish-v7s.css','./css/experience-v7s.css','./css/experience-v8.css','./css/qol-fixes-v8.css','./css/hp-v8.css','./css/stability-v8.css','./js/classes/treasure-hunter/data-v7s.js','./js/classes/treasure-hunter/relics-v7s.js','./js/classes/treasure-hunter/choices-v7s.js','./js/classes/treasure-hunter/feature-names-v8.js','./js/core/state-v7s.js','./js/core/state-events-v8.js','./js/core/rules-2024.js','./js/core/derived-v7s.js','./js/core/roster-v7s.js','./js/core/catalog-srd.js','./js/core/campaign-origin-v7s.js','./js/core/background-extras-v8.js','./js/ui/portrait-cropper.js','./js/ui/app-v8.js','./js/ui/modular-enhancements.js','./js/ui/stat-inspector-v7s.js','./js/ui/rest-manager-v7s.js','./js/ui/gameplay-polish-v7s.js','./js/ui/actions-v7s.js','./js/ui/interaction-fixes-v8.js','./js/ui/hp-manager-v8.js','./js/ui/character-builder-v7s.js','./js/ui/npc-photo-v8.js','./js/ui/inventory-containers-v7s.js','./js/ui/origin-builder-v7s.js','./js/ui/experience-extras-v8.js','./js/ui/builder-checklist-v8.js','./js/ui/import-v7s.js','./manifest.webmanifest','./assets/icon.svg','./assets/treasure-ornament.svg'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy)).catch(()=>{});return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))))});
+const CACHE = 'character-sheet-v9-stabilization-1';
+const SHELL = [
+  './', './index.html', './manifest.webmanifest',
+  './css/v7s.css', './css/ux-v7s.css', './css/modular-v7s.css', './css/enhancements-v7s.css',
+  './css/compact-ux-v7s.css', './css/gameplay-polish-v7s.css', './css/v9.css',
+  './js/classes/treasure-hunter/data-v7s.js', './js/classes/treasure-hunter/relics-v7s.js',
+  './js/classes/treasure-hunter/choices-v7s.js', './js/classes/treasure-hunter/content-v9.js',
+  './js/core/state-v9.js', './js/core/rules-2024.js', './js/core/origin-v9.js',
+  './js/core/derived-v9.js', './js/core/commands-v9.js', './js/core/roster-v9.js',
+  './js/core/catalog-srd.js', './js/ui/portrait-cropper.js', './js/ui/app-v9.js',
+  './assets/icon.svg', './assets/treasure-ornament.svg'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) return;
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put('./index.html', copy));
+          return response;
+        })
+        .catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+  event.respondWith(
+    caches.match(event.request).then(cached => {
+      const update = fetch(event.request).then(response => {
+        if (response.ok) caches.open(CACHE).then(cache => cache.put(event.request, response.clone()));
+        return response;
+      }).catch(() => cached);
+      return cached || update;
+    })
+  );
+});
