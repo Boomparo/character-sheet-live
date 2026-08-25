@@ -1,11 +1,12 @@
 (function(){
-  ['css/experience-v7s.css','css/experience-v8.css','css/swipe-v8.css','css/qol-fixes-v8.css'].forEach(href=>{if(document.querySelector(`link[href="${href}"]`))return;const css=document.createElement('link');css.rel='stylesheet';css.href=href;document.head.appendChild(css)});
+  ['css/experience-v7s.css','css/experience-v8.css','css/swipe-v8.css','css/qol-fixes-v8.css','css/hp-v8.css'].forEach(href=>{if(document.querySelector(`link[href="${href}"]`))return;const css=document.createElement('link');css.rel='stylesheet';css.href=href;document.head.appendChild(css)});
   const queue=[
     'js/classes/treasure-hunter/feature-names-v8.js',
     'js/core/campaign-origin-v7s.js',
     'js/core/background-extras-v8.js',
     'js/ui/actions-v7s.js',
     'js/ui/interaction-fixes-v8.js',
+    'js/ui/hp-manager-v8.js',
     'js/ui/character-builder-v7s.js',
     'js/ui/inventory-containers-v7s.js',
     'js/ui/origin-builder-v7s.js',
