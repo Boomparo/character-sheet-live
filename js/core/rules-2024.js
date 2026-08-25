@@ -23,8 +23,8 @@
   const ZERO_SPEED=new Set(['Grappled','Restrained','Paralyzed','Petrified','Unconscious']);
   const INCAPACITATED=new Set(['Incapacitated','Paralyzed','Petrified','Stunned','Unconscious']);
   const AUTO_FAIL_STR_DEX=new Set(['Paralyzed','Petrified','Stunned','Unconscious']);
-  const ATTACK_DISADVANTAGE=new Set(['Blinded','Poisoned','Prone','Restrained']);
-  const ABILITY_CHECK_DISADVANTAGE=new Set(['Poisoned']);
+  const ATTACK_DISADVANTAGE=new Set(['Blinded','Poisoned','Prone','Restrained','Frightened']);
+  const ABILITY_CHECK_DISADVANTAGE=new Set(['Poisoned','Frightened']);
 
   function exhaustionPenalty(level){return -2*Math.max(0,Math.min(6,Number(level)||0))}
   function exhaustionSpeedPenalty(level){return 5*Math.max(0,Math.min(6,Number(level)||0))}
@@ -37,5 +37,19 @@
   function damageTypeName(key){return DAMAGE_TYPES.find(x=>x[0]===key)?.[1]||key}
   function conditionName(key){return CONDITIONS[key]?.name||key}
 
-  window.DND2024Rules={CONDITIONS,DAMAGE_TYPES,DEFENSE_TYPES,exhaustionPenalty,exhaustionSpeedPenalty,isIncapacitated,speedIsZero,saveAutoFails,attackDisadvantage,abilityCheckDisadvantage,damageTypeName,conditionName};
+  function fixedSkillMode(conditions){
+    const sources=abilityCheckDisadvantage(conditions);
+    return sources.length?{mode:'disadvantage',locked:true,sources}:{mode:'normal',locked:false,sources:[]};
+  }
+  function fixedSaveMode(conditions,ability){
+    if(saveAutoFails(conditions,ability))return{mode:'autoFail',locked:true,sources:conditions.filter(x=>AUTO_FAIL_STR_DEX.has(x))};
+    if(ability==='DEX'&&has(conditions,'Restrained'))return{mode:'disadvantage',locked:true,sources:['Restrained']};
+    return{mode:'normal',locked:false,sources:[]};
+  }
+  function fixedInitiativeMode(conditions){
+    const sources=conditions.filter(x=>INCAPACITATED.has(x));
+    return sources.length?{mode:'disadvantage',locked:true,sources}:{mode:'normal',locked:false,sources:[]};
+  }
+
+  window.DND2024Rules={CONDITIONS,DAMAGE_TYPES,DEFENSE_TYPES,exhaustionPenalty,exhaustionSpeedPenalty,isIncapacitated,speedIsZero,saveAutoFails,attackDisadvantage,abilityCheckDisadvantage,damageTypeName,conditionName,fixedSkillMode,fixedSaveMode,fixedInitiativeMode};
 })();
