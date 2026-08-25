@@ -2,7 +2,7 @@
   const S=window.V7SStateV7s,T=window.TreasureHunterDataV7s;
   if(!S||!T)return;
   const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
   const SKILLS=['Acrobatics','Animal Handling','Arcana','Athletics','Deception','History','Insight','Intimidation','Investigation','Medicine','Nature','Perception','Performance','Persuasion','Religion','Sleight of Hand','Stealth','Survival'];
   const MASTERY_WEAPONS=['Club','Dagger','Greatclub','Handaxe','Javelin','Light Hammer','Mace','Quarterstaff','Sickle','Spear','Light Crossbow','Dart','Shortbow','Sling','Rapier','Scimitar','Shortsword','Whip','Hand Crossbow','Heavy Crossbow','Longbow','Pistol','Musket','Revolver','Rifle','Shotgun'];
   let scheduled=false,patching=false,observer=null;
@@ -43,13 +43,13 @@
   function refreshChoiceWarning(card){
     if(!card)return;const f=(T.features||[]).find(x=>x.id===card.dataset.row);if(!f)return;let missing=0;
     for(const d of T.choiceDefinitions?.[f.id]||[]){const v=d.key==='expertise'?[state().classes.treasureHunter.expertise]:state().classes.treasureHunter[d.key],count=(Array.isArray(v)?v:[v]).filter(Boolean).length;missing+=Math.max(0,d.count-count)}
-    card.classList.toggle('needs-choice',missing>0);let w=card.querySelector('.choice-warning');if(missing&&!w){w=document.createElement('span');w.className='choice-warning';w.textContent='!';card.querySelector('.row-main>span')?.appendChild(w)}else if(!missing)w?.remove();
+    card.classList.toggle('needs-choice',missing>0);const w=card.querySelector('.choice-warning');if(w)w.hidden=!missing;
   }
   function useFeatureDot(btn){
     const id=btn.dataset.builderFeatureUse,f=(T.features||[]).find(x=>x.id===id),max=Math.max(1,Number(f?.uses)||1),used=Number(state().classes.treasureHunter.featureUses?.[id])||0,delta=btn.dataset.useState==='full'?1:-1,next=Math.max(0,Math.min(max,used+delta));
     state().classes.treasureHunter.featureUses||(state().classes.treasureHunter.featureUses={});state().classes.treasureHunter.featureUses[id]=next;persistDirect();const left=max-next;
     $$(`[data-builder-feature-use="${CSS.escape(id)}"]`).forEach((x,i)=>{const filled=i<left;x.classList.toggle('filled',filled);x.dataset.useState=filled?'full':'empty'});
-    $$('.feature-inline-uses').forEach(box=>{if(box.querySelector(`[data-builder-feature-use="${CSS.escape(id)}"]`)){const label=box.querySelector(':scope>span');if(label)label.textContent=`${left}/${max} uses`}});
+    $$('.feature-inline-uses').forEach(box=>{if(box.querySelector(`[data-builder-feature-use="${CSS.escape(id)}"]`)){const label=box.querySelector(':scope>span');if(label){const text=`${left}/${max} uses`;if(label.firstChild?.nodeType===3)label.firstChild.nodeValue=text;else label.textContent=text}}});
   }
 
   function patchExpertise(){
@@ -87,9 +87,9 @@
     let wallet=sec.querySelector('.money-wallet');if(!wallet){wallet=document.createElement('div');wallet.className='money-wallet';wallet.setAttribute('aria-label','Coins left to right: Gold, Electrum, Silver, Copper');wallet.innerHTML=COINS.map(x=>coinTile(...x)).join('');sec.appendChild(wallet)}else for(const [k] of COINS){const el=wallet.querySelector(`[data-coin-value="${k}"]`),v=money()[k];if(el){el.textContent=compact(v);el.title=String(Math.floor(Number(v)||0))}}
   }
 
-  function patchAll(){if(patching)return;patching=true;observer?.disconnect();try{patchFeatureControls();patchBuilder();patchTempHp();patchMoney();ensureMoneyDialog()}finally{patching=false;observe()}}
+  function patchAll(){if(patching)return;patching=true;observer?.disconnect();try{patchBuilder();patchTempHp();patchMoney();ensureMoneyDialog()}finally{patching=false;observe()}}
   function schedule(){if(scheduled||patching)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;patchAll()})}
-  function observe(){observer?.disconnect();observer=new MutationObserver(schedule);['#characterPage','#gearPage','#builderDialog','#featuresPage'].forEach(sel=>{const el=$(sel);if(el)observer.observe(el,{childList:true,subtree:true})})}
+  function observe(){observer?.disconnect();observer=new MutationObserver(schedule);['#characterPage','#gearPage','#builderDialog'].forEach(sel=>{const el=$(sel);if(el)observer.observe(el,{childList:true,subtree:true})})}
 
   document.addEventListener('change',e=>{
     const el=e.target,key=choiceKey(el);if(key&&$('#featuresPage')?.contains(el)){e.preventDefault();e.stopImmediatePropagation();writeChoice(el);return}
