@@ -1,7 +1,7 @@
 name: Validate live sheet
 on:
   push:
-    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist]
+    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist, v8-native-swipe-restore]
   pull_request:
     branches: [main]
 jobs:
@@ -99,9 +99,11 @@ jobs:
           grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'css/swipe-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'import-v7s.js' js/ui/gameplay-polish-v7s.js
-          grep -q 'builderLevelChecklistHost' js/ui/builder-checklist-v8.js
-          grep -q 'pointermove' js/ui/swipe-controller-v8.js
-          grep -q 'startIndex+(dx<0?1:-1)' js/ui/swipe-controller-v8.js
+          grep -q 'NATIVE_SWIPE_RESTORED' js/ui/swipe-controller-v8.js
+          ! grep -q 'pointermove' js/ui/swipe-controller-v8.js
+          ! grep -q 'setPointerCapture' js/ui/swipe-controller-v8.js
+          grep -q 'touch-action:pan-x pan-y' css/swipe-v8.css
+          grep -q 'scroll-snap-type:x mandatory' css/swipe-v8.css
           grep -q '#characterPage #levelChecklist' css/swipe-v8.css
           grep -q 'City Goblin' js/core/campaign-origin-v7s.js
           grep -q 'Darkvision 60 ft' js/core/campaign-origin-v7s.js
