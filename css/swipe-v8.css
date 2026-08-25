@@ -2,12 +2,9 @@
 .pager.swipe-v8{touch-action:pan-y;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain}
 .pager.swipe-v8.swipe-dragging,.pager.swipe-v8.swipe-settling{scroll-snap-type:none!important}
 .pager.swipe-v8.swipe-dragging{scroll-behavior:auto!important;cursor:grabbing}
-.pager.swipe-v8 .sheet-page{scroll-snap-stop:always}
+.pager.swipe-v8 .sheet-page{flex:0 0 100%!important;width:100%!important;min-width:100%!important;max-width:100%!important;scroll-snap-align:start;scroll-snap-stop:always}
 
-/* Level-up review belongs to the guided builder, not the everyday Character overview. */
-#characterPage #levelChecklist{display:none!important}
-.builder-level-checklist-host{margin:0 0 10px}
-.builder-level-checklist-host .level-checklist{display:block!important;margin:0}
-.builder-level-checklist-host .level-checklist::before{content:'BUILDER CHECKLIST';display:block;margin-bottom:6px;font-size:.62rem;letter-spacing:.14em;color:var(--brass);font-weight:800}
+/* Level checklist is intentionally removed; unresolved choices stay as compact builder warnings. */
+#characterPage #levelChecklist,#builderDialog #levelChecklist,#builderDialog #builderLevelChecklist,#builderDialog #builderLevelChecklistHost{display:none!important}
 
 @media(prefers-reduced-motion:reduce){.pager.swipe-v8{scroll-behavior:auto}}
