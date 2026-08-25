@@ -2,7 +2,7 @@
   const S=window.V7SStateV7s,T=window.TreasureHunterDataV7s,R=window.DND2024Rules,D=window.V7SDerived;
   if(!S||!T||!R||!D)return;
   const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
   const signed=n=>Number(n)>=0?`+${Number(n)}`:`${Number(n)}`;
   let active='';
 
@@ -28,7 +28,13 @@
     }else return;
     $('#statTitle').textContent=title;$('#statValue').textContent=value;$('#statFormula').innerHTML=parts.map(x=>line(x[0],x[1])).join('');$('#statEditor').innerHTML=editor;$('#saveStat').hidden=!editor;$('#statDialog').showModal();
   }
-  function save(){const c=S.get().character;if(active.startsWith('ability:')){const a=active.split(':')[1],v=Math.max(1,Math.min(30,Number($('#statAbilityScore').value)||10));S.update(s=>s.character.abilities[a]=v)}else if(active==='ac'){S.update(s=>{s.character.acMode=$('#statAcMode').value;s.character.armorFormula=$('#statArmorFormula').value;s.character.acBonus=Number($('#statAcBonus').value)||0;s.character.acManual=Math.max(0,Number($('#statAcManual').value)||0;s.character.ac=s.character.acManual})}else if(active==='initiative'){S.update(s=>s.character.initiativeBonus=Number($('#statInitBonus').value)||0)}else if(active==='speed'){S.update(s=>s.character.speed=Math.max(0,Number($('#statBaseSpeed').value)||0))}S.flush();$('#statDialog').close();setTimeout(()=>location.reload(),60)}
+  function save(){
+    if(active.startsWith('ability:')){const a=active.split(':')[1],v=Math.max(1,Math.min(30,Number($('#statAbilityScore').value)||10));S.update(s=>s.character.abilities[a]=v)}
+    else if(active==='ac'){S.update(s=>{s.character.acMode=$('#statAcMode').value;s.character.armorFormula=$('#statArmorFormula').value;s.character.acBonus=Number($('#statAcBonus').value)||0;s.character.acManual=Math.max(0,Number($('#statAcManual').value)||0);s.character.ac=s.character.acManual})}
+    else if(active==='initiative'){S.update(s=>s.character.initiativeBonus=Number($('#statInitBonus').value)||0)}
+    else if(active==='speed'){S.update(s=>s.character.speed=Math.max(0,Number($('#statBaseSpeed').value)||0))}
+    S.flush();$('#statDialog').close();setTimeout(()=>location.reload(),60)
+  }
   function statByLabel(root,label){return [...root.querySelectorAll('.stat')].find(x=>x.querySelector(':scope > span')?.textContent.trim()===label)}
   function patch(){
     const char=$('#characterPage');if(!char)return;const hero=char.querySelector('.hero-stats');if(hero){const ac=statByLabel(hero,'AC'),init=statByLabel(hero,'INIT'),speed=statByLabel(hero,'SPEED');if(ac){ac.dataset.inspectStat='ac';const b=ac.querySelector('b');if(b)b.textContent=D.armorClass()}if(init)init.dataset.inspectStat='initiative';if(speed)speed.dataset.inspectStat='speed';const loose=[...hero.children].find(x=>x.matches?.('.roll-flag[data-roll-cycle="initiative"]'));if(loose&&init){const span=document.createElement('span');span.className=loose.className;span.dataset.rollCycle='initiative';span.setAttribute('role','button');span.setAttribute('tabindex','0');span.textContent=loose.textContent;loose.remove();let row=init.querySelector('.stat-value-row');if(!row){row=document.createElement('div');row.className='stat-value-row';const b=init.querySelector('b');if(b){b.before(row);row.appendChild(b)}}row.appendChild(span)}}
