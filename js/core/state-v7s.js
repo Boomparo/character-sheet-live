@@ -50,7 +50,9 @@
     if(!c.gear||typeof c.gear!=='object')c.gear=baseState().character.gear;
     if(!Array.isArray(c.gear.inventory))c.gear.inventory=[];
     if(!Array.isArray(c.gear.weapons))c.gear.weapons=[];
-    const th=s.classes?.treasureHunter||(s.classes||(s.classes={})).treasureHunter={};
+    if(!s.classes||typeof s.classes!=='object')s.classes={};
+    if(!s.classes.treasureHunter||typeof s.classes.treasureHunter!=='object')s.classes.treasureHunter={};
+    const th=s.classes.treasureHunter;
     if(!th.choices||typeof th.choices!=='object')th.choices={};
     if(!Array.isArray(th.ancientLanguages))th.ancientLanguages=['','',''];
     if(!Array.isArray(th.vehicles))th.vehicles=['',''];
