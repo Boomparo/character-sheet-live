@@ -45,6 +45,8 @@ const C = global.CharacterCommands;
 const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 
+assert.equal(S.APP_VERSION, '9.0.1-stabilization');
+
 function fresh(mutator) {
   const value = S.fresh();
   if (mutator) mutator(value);
@@ -221,10 +223,13 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /HIT \$\{esc\(record\.hit\)\}/);
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
+  assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
   assert.match(app, /\['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
   const npcRenderer = app.slice(app.indexOf('function renderNpcs()'), app.indexOf('function renderAll()'));
   assert.equal(npcRenderer.includes('npcDeleteBtn'), false, 'NPC list renderer must not expose deletion');
   const css = fs.readFileSync(path.join(root, 'css/v7s.css'), 'utf8');
   assert.match(css, /scroll-snap-type:x mandatory/);
   assert.match(css, /touch-action:pan-x pan-y/);
+  const v9Css = fs.readFileSync(path.join(root, 'css/v9.css'), 'utf8');
+  assert.match(v9Css, /\.pager\{scroll-behavior:auto\}/);
 });

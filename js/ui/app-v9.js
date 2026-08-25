@@ -464,7 +464,8 @@
   function setPage(index, smooth = true, save = true) {
     const next = Math.max(0, Math.min(PAGES.length - 1, Number(index) || 0));
     const pager = $('#pager');
-    pager.scrollTo({ left: pager.clientWidth * next, behavior: smooth ? 'smooth' : 'auto' });
+    const adjacent = Math.abs(next - currentPageIndex()) === 1;
+    pager.scrollTo({ left: pager.clientWidth * next, behavior: smooth && adjacent ? 'smooth' : 'auto' });
     updatePageChrome(next);
     if (save && state().ui.page !== next) C.setUi('page', next);
   }

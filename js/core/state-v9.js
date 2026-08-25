@@ -4,7 +4,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 11;
-  const APP_VERSION = '9.0.0-stabilization';
+  const APP_VERSION = '9.0.1-stabilization';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'backpack', 'back', 'ground', 'storage'];
   const CHOICE_ARRAYS = [

@@ -1,4 +1,4 @@
-const CACHE = 'character-sheet-v9-stabilization-1';
+const CACHE = 'character-sheet-v9-stabilization-2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/v7s.css', './css/ux-v7s.css', './css/modular-v7s.css', './css/enhancements-v7s.css',
