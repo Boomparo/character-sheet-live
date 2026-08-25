@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="cs">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
@@ -9,18 +9,23 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="css/v7s.css">
   <link rel="stylesheet" href="css/ux-v7s.css">
+  <link rel="stylesheet" href="css/modular-v7s.css">
 </head>
 <body>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div class="identity-mini"><strong id="topName">Postava</strong><span id="topClass">Treasure Hunter</span></div>
-      <div class="top-actions"><button id="searchBtn" class="icon-btn" aria-label="Hledat">⌕</button><button id="editBtn" class="icon-btn" aria-label="Upravit postavu">⚒</button></div>
+      <div class="identity-mini"><strong id="topName">Unnamed Character</strong><span id="topClass">Treasure Hunter</span></div>
+      <div class="top-actions">
+        <button id="charactersBtn" class="icon-btn" aria-label="Characters">♟</button>
+        <button id="searchBtn" class="icon-btn" aria-label="Search">⌕</button>
+        <button id="editBtn" class="icon-btn" aria-label="Edit character">⚒</button>
+      </div>
     </header>
 
-    <nav class="page-position" aria-label="Stránka character sheetu">
-      <button id="prevPage" class="page-arrow" aria-label="Předchozí stránka">‹</button>
+    <nav class="page-position" aria-label="Character sheet page">
+      <button id="prevPage" class="page-arrow" aria-label="Previous page">‹</button>
       <div class="page-position-center"><strong id="pageTitle">CHARACTER</strong><div id="pageDots" class="page-dots"></div></div>
-      <button id="nextPage" class="page-arrow" aria-label="Další stránka">›</button>
+      <button id="nextPage" class="page-arrow" aria-label="Next page">›</button>
     </nav>
 
     <main id="pager" class="pager" tabindex="0">
@@ -35,77 +40,100 @@
 
     <footer class="mini-hud">
       <button data-open-hp><span>HP</span><b id="hudHp">0/0</b></button>
-      <button data-detail="ac"><span>AC</span><b id="hudAc">10</b></button>
-      <button data-detail="cool"><span>COOL</span><b id="hudCool">0/0</b></button>
+      <button><span>AC</span><b id="hudAc">10</b></button>
+      <button><span>COOL</span><b id="hudCool">0/0</b></button>
     </footer>
   </div>
 
   <dialog id="hpDialog" class="sheet-dialog hp-dialog">
     <form method="dialog">
-      <div class="dialog-head"><strong>Životy</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
-      <div class="hp-status"><div><span>AKTUÁLNÍ</span><b id="hpCurrent">0</b></div><div><span>MAXIMUM</span><b id="hpMax">0</b></div><div><span>DOČASNÉ</span><b id="hpTempRead">0</b></div></div>
+      <div class="dialog-head"><strong>Hit Points</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <div class="hp-status"><div><span>CURRENT</span><b id="hpCurrent">0</b></div><div><span>MAX</span><b id="hpMax">0</b></div><div><span>TEMP</span><b id="hpTempRead">0</b></div></div>
       <div class="hp-wheel"><button type="button" id="hpMinus">−</button><strong id="hpAmount">1</strong><button type="button" id="hpPlus">+</button></div>
-      <label>Typ zranění<select id="hpDamageType"><option value="">Bez typu / neuplatňovat obrany</option></select></label>
-      <div id="hpDamageNote" class="calculation-note"></div>
-      <div class="hp-actions"><button type="button" id="hpDamage" class="damage">Zranění</button><button type="button" id="hpHeal" class="heal">Léčení</button></div>
-      <label class="temp-row"><span>Dočasné životy</span><input id="hpTemp" type="number" min="0"></label>
-    </form>
-  </dialog>
-
-  <dialog id="shortRestDialog" class="sheet-dialog rest-dialog">
-    <form method="dialog">
-      <div class="dialog-head"><strong>Krátký odpočinek</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
-      <div id="shortRestBody"></div>
-      <menu><button value="cancel" class="ghost">Zrušit</button><button type="button" id="finishShortRest" class="primary">Dokončit odpočinek</button></menu>
-    </form>
-  </dialog>
-
-  <dialog id="longRestDialog" class="sheet-dialog rest-dialog">
-    <form method="dialog">
-      <div class="dialog-head"><strong>Dlouhý odpočinek</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
-      <div id="longRestBody"></div>
-      <menu><button value="cancel" class="ghost">Zrušit</button><button type="button" id="finishLongRest" class="primary">Dokončit odpočinek</button></menu>
-    </form>
-  </dialog>
-
-  <dialog id="detailDialog" class="sheet-dialog detail-dialog">
-    <form method="dialog">
-      <div class="dialog-head"><strong id="detailTitle">Detail</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
-      <div id="detailBody"></div>
-      <menu><button value="cancel" class="primary">Hotovo</button></menu>
+      <label>Damage Type<select id="hpDamageType"><option value="">No type / ignore defenses</option></select></label>
+      <div class="hp-actions"><button type="button" id="hpDamage" class="damage">Damage</button><button type="button" id="hpHeal" class="heal">Heal</button></div>
+      <label class="temp-row"><span>Temporary HP</span><input id="hpTemp" type="number" min="0"></label>
     </form>
   </dialog>
 
   <dialog id="editDialog" class="sheet-dialog">
     <form method="dialog" id="editForm">
-      <div class="dialog-head"><strong>Postava</strong><button value="cancel" class="icon-btn">×</button></div>
-      <div id="portraitPreview" class="portrait-preview"><span>Bez portrétu</span></div>
-      <label>Portrét<input id="editPortrait" type="file" accept="image/*"></label>
-      <div class="form-grid two"><label>Jméno<input id="editName" autocomplete="off"></label><label>Rasa<input id="editRace" autocomplete="off"></label></div>
-      <label>Úroveň<input id="editLevel" type="number" min="1" max="20"></label>
-      <label><input id="editHpAuto" type="checkbox" style="width:auto;margin-right:6px">Automatické maximum životů podle úrovně a Odolnosti</label>
+      <div class="dialog-head"><strong>Character</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <div id="portraitPreview" class="portrait-preview"><span>No portrait</span></div>
+      <label>Portrait<input id="editPortrait" type="file" accept="image/*"></label>
+      <div class="form-grid two"><label>Name<input id="editName" autocomplete="off"></label><label>Race<input id="editRace" autocomplete="off"></label></div>
+      <label>Level<select id="editLevel"></select></label>
+      <label><input id="editHpAuto" type="checkbox" style="width:auto;margin-right:6px">Auto Max HP from level and CON</label>
       <div class="form-grid two">
-        <label>Maximum životů<input id="editHpMax" type="number" min="1"></label>
-        <label>Obranné číslo<input id="editAc" type="number" min="0"></label>
-        <label>Základní Rychlost<input id="editSpeed" type="number" min="0" step="5"></label>
-        <label>Bonus k iniciativě<input id="editInitBonus" type="number"></label>
+        <label>Max HP<input id="editHpMax" type="number" min="1"></label>
+        <label>Armor Class<input id="editAc" type="number" min="0"></label>
+        <label>Base Speed<input id="editSpeed" type="number" min="0" step="5"></label>
+        <label>Initiative Bonus<input id="editInitBonus" type="number"></label>
       </div>
       <div class="ability-editor" id="abilityEditor"></div>
-      <menu><button value="cancel" class="ghost">Zrušit</button><button id="saveEdit" value="default" class="primary">Uložit</button></menu>
+      <menu><button value="cancel" class="ghost">Cancel</button><button id="saveEdit" value="default" class="primary">Save</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="cropDialog" class="sheet-dialog crop-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>Crop Portrait</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <div class="crop-stage"><canvas id="cropCanvas" width="300" height="300"></canvas></div>
+      <div class="crop-controls">
+        <label>Left / Right<input id="cropX" type="range" min="0" max="100" value="50"></label>
+        <label>Up / Down<input id="cropY" type="range" min="0" max="100" value="50"></label>
+        <label>Zoom<input id="cropZoom" type="range" min="1" max="3" step="0.05" value="1"></label>
+      </div>
+      <menu><button id="cropReset" type="button" class="ghost">Reset</button><button id="cropSave" type="button" class="primary">Use Crop</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="actionDialog" class="sheet-dialog action-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>Custom Action</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <label>Name<input id="customActionName" autocomplete="off"></label>
+      <div class="form-grid two">
+        <label>Action Type<select id="customActionType"><option>Action</option><option>Bonus Action</option><option>Reaction</option><option>Free</option><option>Other</option></select></label>
+        <label>Group<select id="customActionGroup"><option value="normal">Normal</option><option value="other">Other</option></select></label>
+      </div>
+      <label>Damage / Roll<input id="customActionDamage" placeholder="Optional, e.g. 2d6 Fire"></label>
+      <label>Rules / Notes<textarea id="customActionNotes" rows="6"></textarea></label>
+      <menu><button value="cancel" class="ghost">Cancel</button><button id="saveCustomAction" type="button" class="primary">Add Action</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="itemDialog" class="sheet-dialog item-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>D&D SRD 5.2.1 Items</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <div class="catalog-toolbar">
+        <input id="itemSearch" class="search-input wide" placeholder="Search equipment and magic items…" autocomplete="off">
+        <select id="itemRarity"><option value="all">All rarities</option><option>Mundane</option><option>Common</option><option>Uncommon</option><option>Rare</option><option>Very Rare</option><option>Legendary</option><option>Artifact</option></select>
+        <select id="itemKind"><option value="all">All items</option><option>Equipment</option><option>Magic Item</option></select>
+      </div>
+      <div id="itemResults" class="catalog-results"></div>
+    </form>
+  </dialog>
+
+  <dialog id="charactersDialog" class="sheet-dialog characters-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>Characters</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <button type="button" class="small-btn primary" data-roster-new>+ New Character</button>
+      <div id="rosterList" class="roster-list top-gap"></div>
+      <div class="cloud-note">Characters are stored locally for now. The roster is already structured so cloud sync can be connected later without redesigning the sheet.</div>
     </form>
   </dialog>
 
   <dialog id="searchDialog" class="sheet-dialog search-dialog">
-    <form method="dialog"><div class="dialog-head"><strong>Hledat</strong><button value="cancel" class="icon-btn">×</button></div><input id="globalSearch" class="search-input" placeholder="feature, relikvie, NPC…" autocomplete="off"><div id="globalSearchResults" class="search-results"></div></form>
+    <form method="dialog"><div class="dialog-head"><strong>Search</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><input id="globalSearch" class="search-input" placeholder="Feature, relic, item, NPC…" autocomplete="off"><div id="globalSearchResults" class="search-results"></div></form>
   </dialog>
 
   <dialog id="npcDialog" class="sheet-dialog">
     <form method="dialog" id="npcForm">
-      <div class="dialog-head"><strong>NPC</strong><button value="cancel" class="icon-btn">×</button></div>
-      <input id="npcId" type="hidden"><label>Jméno<input id="npcName" required></label>
-      <div class="form-grid two"><label>Tag<input id="npcTag" placeholder="ALLY / CONTACT…"></label><label>Místo<input id="npcLocation"></label></div>
-      <label>Portrét<input id="npcImage" type="file" accept="image/*"></label><label>Poznámky<textarea id="npcNotes" rows="7"></textarea></label>
-      <menu><button value="cancel" class="ghost">Zrušit</button><button id="saveNpc" value="default" class="primary">Uložit NPC</button></menu>
+      <div class="dialog-head"><strong>NPC</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
+      <input id="npcId" type="hidden"><label>Name<input id="npcName" required></label>
+      <div class="form-grid two"><label>Tag<input id="npcTag" placeholder="ALLY / CONTACT…"></label><label>Location<input id="npcLocation"></label></div>
+      <label>Portrait<input id="npcImage" type="file" accept="image/*"></label><label>Notes<textarea id="npcNotes" rows="7"></textarea></label>
+      <menu><button value="cancel" class="ghost">Cancel</button><button id="saveNpc" value="default" class="primary">Save NPC</button></menu>
     </form>
   </dialog>
 
@@ -113,9 +141,13 @@
 
   <script src="js/classes/treasure-hunter/data-v7s.js"></script>
   <script src="js/classes/treasure-hunter/relics-v7s.js"></script>
+  <script src="js/classes/treasure-hunter/choices-v7s.js"></script>
   <script src="js/core/state-v7s.js"></script>
   <script src="js/core/rules-2024.js"></script>
-  <script src="js/ui/app-v7s.js"></script>
+  <script src="js/core/roster-v7s.js"></script>
+  <script src="js/core/catalog-srd.js"></script>
+  <script src="js/ui/portrait-cropper.js"></script>
+  <script src="js/ui/app-v8.js"></script>
   <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js').catch(()=>{});</script>
 </body>
 </html>
