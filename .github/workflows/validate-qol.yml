@@ -1,7 +1,7 @@
 name: Validate QOL fixes
 on:
   push:
-    branches: [main, v8-qol-wallet-builder-fixes, v8-native-swipe-restore]
+    branches: [main, v8-qol-wallet-builder-fixes, v8-native-swipe-restore, v8-hp-temp-manager]
   pull_request:
     branches: [main]
 jobs:
@@ -15,6 +15,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           node --check js/ui/interaction-fixes-v8.js
+          node --check js/ui/hp-manager-v8.js
           node --check js/ui/builder-checklist-v8.js
           node --check js/ui/swipe-controller-v8.js
           node --check js/ui/gameplay-polish-v7s.js
@@ -31,6 +32,7 @@ jobs:
       - name: Money and temp HP guards
         run: |
           test -s css/qol-fixes-v8.css
+          test -s css/hp-v8.css
           grep -q 'moneyDialog' js/ui/interaction-fixes-v8.js
           grep -q "\['gp','GP','G'\]" js/ui/interaction-fixes-v8.js
           grep -q "\['ep','EP','E'\]" js/ui/interaction-fixes-v8.js
@@ -40,6 +42,12 @@ jobs:
           grep -q 'TEMP ' js/ui/interaction-fixes-v8.js
           grep -q 'money-wallet' css/qol-fixes-v8.css
           grep -q 'money-edit-grid' css/qol-fixes-v8.css
+          grep -q 'h.temp-=absorbed' js/ui/hp-manager-v8.js
+          grep -q 'absorbed by Temp HP' js/ui/hp-manager-v8.js
+          grep -q 'hpAmountWheel' js/ui/hp-manager-v8.js
+          grep -q 'hpAmountInput' js/ui/hp-manager-v8.js
+          grep -q 'Swipe the number wheel or type the exact amount' js/ui/hp-manager-v8.js
+          grep -q 'temp-hp-chip' css/hp-v8.css
       - name: Native swipe guards
         run: |
           grep -q 'touch-action:pan-x pan-y' css/swipe-v8.css
@@ -52,9 +60,12 @@ jobs:
       - name: Wiring
         run: |
           grep -q 'interaction-fixes-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'hp-manager-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'hp-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'qol-fixes-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'interaction-fixes-v8.js' service-worker.js
-          grep -q 'qol-fixes-v8.css' service-worker.js
-          grep -q 'character-sheet-v8-native-swipe-1' service-worker.js
+          grep -q 'hp-manager-v8.js' service-worker.js
+          grep -q 'hp-v8.css' service-worker.js
+          grep -q 'character-sheet-v8-hp-temp-1' service-worker.js
