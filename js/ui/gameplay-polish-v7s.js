@@ -5,6 +5,7 @@
     'js/core/campaign-origin-v7s.js',
     'js/core/background-extras-v8.js',
     'js/ui/actions-v7s.js',
+    'js/ui/interaction-fixes-v8.js',
     'js/ui/character-builder-v7s.js',
     'js/ui/inventory-containers-v7s.js',
     'js/ui/origin-builder-v7s.js',
