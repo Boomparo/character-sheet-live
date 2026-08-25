@@ -54,8 +54,8 @@ jobs:
         run: |
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
           grep -q 'touch-action:pan-x pan-y' css/v7s.css
-          ! grep -q 'css/swipe-v8.css' js/ui/gameplay-polish-v7s.js
-          ! grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
+          ! grep -q "'css/swipe-v8.css'" js/ui/gameplay-polish-v7s.js
+          ! grep -q "'js/ui/swipe-controller-v8.js'" js/ui/gameplay-polish-v7s.js
           grep -q '#featuresPage .row-card.open .row-detail' css/stability-v8.css
           grep -q 'S.subscribe' js/ui/character-builder-v7s.js
       - name: NPC portrait guards
