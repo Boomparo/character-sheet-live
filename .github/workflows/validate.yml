@@ -1,6 +1,8 @@
 name: Validate live sheet
 on:
   push:
+    branches: [main, v7s-modular-pass]
+  pull_request:
     branches: [main]
 jobs:
   validate:
@@ -14,17 +16,35 @@ jobs:
         run: |
           node --check js/classes/treasure-hunter/data-v7s.js
           node --check js/classes/treasure-hunter/relics-v7s.js
+          node --check js/classes/treasure-hunter/choices-v7s.js
           node --check js/core/state-v7s.js
           node --check js/core/rules-2024.js
-          node --check js/ui/app-v7s.js
+          node --check js/core/roster-v7s.js
+          node --check js/core/catalog-srd.js
+          node --check js/ui/portrait-cropper.js
+          node --check js/ui/app-v8.js
           node --check service-worker.js
       - name: Required files
         run: |
           test -s index.html
           test -s css/v7s.css
           test -s css/ux-v7s.css
+          test -s css/modular-v7s.css
           test -s manifest.webmanifest
           test -s assets/icon.svg
       - name: Treasure Hunter data integrity
         run: |
-          node -e "global.window={}; require('./js/classes/treasure-hunter/data-v7s.js'); require('./js/classes/treasure-hunter/relics-v7s.js'); if(window.TreasureHunterRelicsV7s.length!==38) throw new Error('Expected 38 relics'); if(window.TreasureHunterDataV7s.coolTotal(20)!==20) throw new Error('Cool progression broken'); console.log('live data ok')"
+          node -e "global.window={}; require('./js/classes/treasure-hunter/data-v7s.js'); require('./js/classes/treasure-hunter/relics-v7s.js'); require('./js/classes/treasure-hunter/choices-v7s.js'); if(window.TreasureHunterRelicsV7s.length!==38) throw new Error('Expected 38 relics'); if(window.TreasureHunterDataV7s.coolTotal(20)!==20) throw new Error('Cool progression broken'); console.log('Treasure Hunter data ok')"
+      - name: Modular UI regression guards
+        run: |
+          grep -q 'js/ui/app-v8.js' index.html
+          ! grep -q 'js/ui/app-v7s.js' index.html
+          grep -q 'WHIP / ROPE DC' js/ui/app-v8.js
+          grep -q "\['free','FREE'\]" js/ui/app-v8.js
+          grep -q "\['other','OTHER'\]" js/ui/app-v8.js
+          grep -q 'Unarmed Strike' js/ui/app-v8.js
+          grep -q 'V7SRoster' js/core/roster-v7s.js
+          grep -q 'V7SItemCatalog' js/core/catalog-srd.js
+          grep -q 'Immunities' js/core/rules-2024.js
+          grep -q "\['Thunder','Thunder'\]" js/core/rules-2024.js
+          ! grep -q "Imunita" js/core/rules-2024.js
