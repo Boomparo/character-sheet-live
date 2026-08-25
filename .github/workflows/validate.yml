@@ -1,7 +1,7 @@
 name: Validate live sheet
 on:
   push:
-    branches: [main, v7s-modular-pass]
+    branches: [main, v7s-modular-pass, v7s-ux-rest-stats]
   pull_request:
     branches: [main]
 jobs:
@@ -19,11 +19,14 @@ jobs:
           node --check js/classes/treasure-hunter/choices-v7s.js
           node --check js/core/state-v7s.js
           node --check js/core/rules-2024.js
+          node --check js/core/derived-v7s.js
           node --check js/core/roster-v7s.js
           node --check js/core/catalog-srd.js
           node --check js/ui/portrait-cropper.js
           node --check js/ui/app-v8.js
           node --check js/ui/modular-enhancements.js
+          node --check js/ui/stat-inspector-v7s.js
+          node --check js/ui/rest-manager-v7s.js
           node --check service-worker.js
       - name: Required files
         run: |
@@ -32,6 +35,7 @@ jobs:
           test -s css/ux-v7s.css
           test -s css/modular-v7s.css
           test -s css/enhancements-v7s.css
+          test -s css/compact-ux-v7s.css
           test -s manifest.webmanifest
           test -s assets/icon.svg
       - name: Treasure Hunter data integrity
@@ -57,12 +61,14 @@ jobs:
           for(const id of ['ancient-languages','drivers-license','specialized-expertise','weapon-mastery']) if(!T.choiceDefinitions[id]) throw new Error(`Missing choices for ${id}`);
           console.log('Treasure Hunter final data ok',counts);
           NODE
-      - name: Modular UI regression guards
+      - name: UX and rules regression guards
         run: |
           grep -q 'js/ui/app-v8.js' index.html
           grep -q 'js/ui/modular-enhancements.js' index.html
-          grep -q 'css/enhancements-v7s.css' index.html
-          ! grep -q 'js/ui/app-v7s.js' index.html
+          grep -q 'js/core/derived-v7s.js' index.html
+          grep -q 'js/ui/stat-inspector-v7s.js' index.html
+          grep -q 'js/ui/rest-manager-v7s.js' index.html
+          grep -q 'css/compact-ux-v7s.css' index.html
           grep -q 'WHIP / ROPE DC' js/ui/app-v8.js
           grep -q "\['free','FREE'\]" js/ui/app-v8.js
           grep -q "\['other','OTHER'\]" js/ui/app-v8.js
@@ -71,6 +77,11 @@ jobs:
           grep -q 'V7SItemCatalog' js/core/catalog-srd.js
           grep -q 'Immunities' js/core/rules-2024.js
           grep -q "\['Thunder','Thunder'\]" js/core/rules-2024.js
-          ! grep -q "Imunita" js/core/rules-2024.js
+          grep -q "leather:{name:'Leather Armor',base:11,dex:true" js/core/derived-v7s.js
+          grep -q 'fixedSaveMode' js/core/rules-2024.js
+          grep -q 'Spend Hit Dice' js/ui/rest-manager-v7s.js
+          grep -q 'Restore all spent Hit Point Dice' js/ui/rest-manager-v7s.js
+          grep -q 'data-inspect-stat' js/ui/stat-inspector-v7s.js
           grep -q 'feature-use-control' js/ui/modular-enhancements.js
           grep -q 'cloak-pilgrim-worlds' js/ui/modular-enhancements.js
+          ! grep -q "Imunita" js/core/rules-2024.js
