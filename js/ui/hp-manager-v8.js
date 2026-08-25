@@ -47,9 +47,8 @@
   function syncPickerFromDialog(){ensurePicker();const fromApp=clampAmount($('#hpAmount')?.textContent||1)||1;setAmount(fromApp);updateHpDisplay()}
 
   function patchTempBadge(root,temp){
-    if(!root)return;let badge=root.querySelector('.temp-hp-chip');
-    if(temp>0){if(!badge){badge=document.createElement('small');badge.className='temp-hp-chip active';root.appendChild(badge)}setText(badge,`+${temp} TEMP`);badge.classList.add('active')}
-    else badge?.remove();
+    if(!root)return;let badge=root.querySelector('.temp-hp-chip');if(!badge){badge=document.createElement('small');badge.className='temp-hp-chip';root.appendChild(badge)}
+    setText(badge,`TEMP ${temp}`);badge.classList.toggle('active',temp>0);
   }
   function updateHpDisplay(){
     const h=hp(),hpStat=$('#characterPage [data-open-hp]');
