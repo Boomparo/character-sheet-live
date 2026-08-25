@@ -1,17 +1,33 @@
 (function(){
   const S=window.V7SStateV7s;
-  let timer=0,sourceObserver=null;
-  function sync(){
-    clearTimeout(timer);const dialog=document.querySelector('#builderDialog'),body=document.querySelector('#builderBody'),source=document.querySelector('#characterPage #levelChecklist');if(!dialog||!body||!source)return;
-    let host=dialog.querySelector('#builderLevelChecklist');if(!host){host=document.createElement('div');host.id='builderLevelChecklist';host.className='builder-level-checklist-wrap';body.before(host)}
-    const clone=source.cloneNode(true);clone.id='builderLevelChecklistCard';clone.classList.add('inside-builder');host.replaceChildren(clone);
+  const $=s=>document.querySelector(s);
+  let scheduled=false,patching=false,observer=null;
+
+  function schedule(){if(scheduled)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;patch()})}
+  function patch(){
+    if(patching)return;patching=true;
+    try{
+      const source=$('#characterPage #levelChecklist');
+      if(source){source.setAttribute('aria-hidden','true');source.dataset.builderSource='1'}
+      const dialog=$('#builderDialog'),body=$('#builderBody');
+      if(!source||!dialog||!body||!dialog.open)return;
+      let host=body.querySelector('#builderLevelChecklistHost');
+      if(!host){host=document.createElement('div');host.id='builderLevelChecklistHost';host.className='builder-level-checklist-host';body.prepend(host)}
+      const signature=source.outerHTML.replace(/id="levelChecklist"/,'id="builderLevelChecklist"').replace(/aria-hidden="true"/g,'').replace(/data-builder-source="1"/g,'');
+      if(host.dataset.signature===signature)return;
+      host.dataset.signature=signature;
+      const clone=source.cloneNode(true);clone.id='builderLevelChecklist';clone.removeAttribute('aria-hidden');clone.removeAttribute('data-builder-source');clone.style.display='';
+      host.replaceChildren(clone);
+    }finally{patching=false}
   }
-  function schedule(delay=40){clearTimeout(timer);timer=setTimeout(sync,delay)}
-  function watchSource(){const source=document.querySelector('#characterPage');if(!source)return;sourceObserver?.disconnect();sourceObserver=new MutationObserver(()=>schedule(20));sourceObserver.observe(source,{childList:true,subtree:true})}
-  function init(){
-    document.documentElement.classList.add('checklist-in-builder');watchSource();schedule(120);
-    document.addEventListener('click',e=>{if(e.target.closest('[data-open-builder]'))schedule(80);if(e.target.closest('[data-review-level]'))schedule(80)},true);
-    S?.subscribe(()=>schedule(80));
+  function observe(){
+    observer?.disconnect();observer=new MutationObserver(schedule);
+    const char=$('#characterPage'),dialog=$('#builderDialog');
+    if(char)observer.observe(char,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+    if(dialog)observer.observe(dialog,{childList:true,subtree:true,attributes:true,attributeFilter:['open']});
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+  document.addEventListener('click',e=>{if(e.target.closest('[data-open-builder],[data-builder-tab],[data-review-level]'))setTimeout(schedule,25)},true);
+  document.addEventListener('DOMContentLoaded',()=>{observe();setTimeout(schedule,80)});
+  S?.subscribe(()=>setTimeout(schedule,20));
+  setTimeout(()=>{observe();schedule()},220);
 })();
