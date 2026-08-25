@@ -3,6 +3,7 @@
   ['css/experience-v7s.css','css/experience-v8.css','css/qol-fixes-v8.css','css/hp-v8.css','css/stability-v8.css'].forEach(href=>{if(document.querySelector(`link[href="${href}"]`))return;const css=document.createElement('link');css.rel='stylesheet';css.href=href;document.head.appendChild(css)});
   const queue=[
     'js/classes/treasure-hunter/feature-names-v8.js',
+    'js/core/state-events-v8.js',
     'js/core/campaign-origin-v7s.js',
     'js/core/background-extras-v8.js',
     'js/ui/actions-v7s.js',
