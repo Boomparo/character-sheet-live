@@ -1,0 +1,13 @@
+/* V8 stability pass: keep interactive feature controls still, and give NPC portraits the same crop flow as character portraits. */
+#featuresPage .row-detail,#featuresPage .feature-quick-strip,#featuresPage select,#featuresPage input{transition:none!important;animation:none!important}
+#featuresPage .row-card.open .row-detail{animation:none!important}
+#featuresPage .choice-warning[hidden]{display:none!important}
+#featuresPage select,#featuresPage input{touch-action:manipulation}
+
+.npc-photo-editor{display:grid;gap:8px;margin:8px 0 10px;padding:9px;border:1px solid #4d392f;border-radius:11px;background:#18120f}
+.npc-photo-preview{height:150px;border:1px dashed #60483a;border-radius:10px;display:grid;place-items:center;overflow:hidden;color:var(--muted);font-size:.66rem;letter-spacing:.1em;background:#120e0c}
+.npc-photo-preview img{width:100%;height:100%;object-fit:cover}
+.npc-photo-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.npc-photo-buttons .small-btn{min-height:42px}
+.npc-photo-hidden{position:fixed!important;left:-10000px!important;top:-10000px!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
+@media(max-width:390px){.npc-photo-buttons{grid-template-columns:1fr}.npc-photo-preview{height:132px}}
