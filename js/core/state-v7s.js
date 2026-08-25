@@ -1,17 +1,18 @@
 (function(){
   const KEY='character-sheet-v7s';
   const OLD_KEY='occultist-sheet-v1';
-  const SCHEMA_VERSION=9;
+  const SCHEMA_VERSION=10;
   const A=['STR','DEX','CON','INT','WIS','CHA'];
+  const ITEM_LOCATIONS=['equipped','worn','carried','backpack','back','ground','storage'];
   const clone=v=>JSON.parse(JSON.stringify(v));
 
   function baseState(){return {
-    schemaVersion:SCHEMA_VERSION,appVersion:'7s.4.0-ux',
+    schemaVersion:SCHEMA_VERSION,appVersion:'7s.5.0-gameplay',
     character:{
       name:'',race:'',classKey:'treasureHunter',level:1,portrait:'',
       hp:{current:10,max:10,temp:0,auto:true},
       hitDice:{d10:{spent:0}},
-      ac:10,acMode:'auto',acManual:10,armorFormula:'leather',acBonus:0,
+      ac:10,acMode:'auto',acManual:10,armorFormula:'unarmored',acBonus:0,
       speed:30,initiativeBonus:0,inspiration:false,
       abilities:{STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10},
       conditions:[],exhaustion:0,skills:{},
@@ -21,17 +22,27 @@
       proficiencies:{languages:[],vehicles:[],tools:["Thieves' Tools","Navigator's Tools"],weapons:[],armor:['Light Armor'],senses:[],defenses:[]},
       gear:{money:{cp:0,sp:0,gp:0,pp:0},weapons:[{id:'whip',name:'Whip',attackAbility:'DEX',damage:'1d6',damageType:'Slashing',mastery:'Slow'}],armor:[],inventory:[]}
     },
-    classes:{treasureHunter:{coolUsed:0,featureUses:{},relics:[],ancientLanguages:['','',''],vehicles:['',''],expertise:'',weaponMasteries:['',''],choices:{}},occultist:{}},
+    classes:{treasureHunter:{coolUsed:0,featureUses:{},relics:[],ancientLanguages:['','',''],vehicles:['',''],expertise:'',weaponMasteries:['',''],feat4:[],feat8:[],feat12:[],feat16:[],epicBoon19:[],choices:{}},occultist:{}},
     campaign:{npcs:[],notes:[],tarot:{}},
-    ui:{page:0,favoriteFeatures:[],featureFilter:'all'}
+    ui:{page:0,favoriteFeatures:[],favoriteActions:[],featureFilter:'all',actionFilter:'all',actionSort:'combat'}
   }}
 
   function merge(target,source){if(!source||typeof source!=='object')return target;Object.keys(source).forEach(k=>{if(source[k]&&typeof source[k]==='object'&&!Array.isArray(source[k])){if(!target[k]||typeof target[k]!=='object'||Array.isArray(target[k]))target[k]={};merge(target[k],source[k]);}else target[k]=source[k];});return target}
   function num(v,f){const n=Number(v);return Number.isFinite(n)?n:f}
   function clamp(n,a,b){return Math.max(a,Math.min(b,num(n,a)))}
+  function normalizeItem(it){
+    if(typeof it==='string')return it;
+    if(!it||typeof it!=='object')return it;
+    if(!ITEM_LOCATIONS.includes(it.location))it.location='backpack';
+    it.quantity=Math.max(1,Math.floor(num(it.quantity,1)));
+    if(it.attunement&&typeof it.isAttuned!=='boolean')it.isAttuned=false;
+    if(!Array.isArray(it.modifiers))it.modifiers=[];
+    return it;
+  }
 
   function normalize(s){
-    s.schemaVersion=SCHEMA_VERSION;s.appVersion='7s.4.0-ux';
+    const oldSchema=Number(s.schemaVersion)||0;
+    s.schemaVersion=SCHEMA_VERSION;s.appVersion='7s.5.0-gameplay';
     const c=s.character||(s.character={});
     c.level=clamp(c.level,1,20);
     c.conditions=Array.isArray(c.conditions)?c.conditions.filter(Boolean):[];
@@ -42,7 +53,7 @@
     c.hitDice.d10.spent=clamp(c.hitDice.d10.spent,0,c.level);
     c.acMode=['auto','manual'].includes(c.acMode)?c.acMode:'auto';
     c.acManual=Math.max(0,num(c.acManual,c.ac??10));
-    c.armorFormula=typeof c.armorFormula==='string'&&c.armorFormula?c.armorFormula:'leather';
+    c.armorFormula=typeof c.armorFormula==='string'&&c.armorFormula?c.armorFormula:'unarmored';
     c.acBonus=num(c.acBonus,0);
     c.damageDefenses=c.damageDefenses&&typeof c.damageDefenses==='object'?c.damageDefenses:{};
     ['resistances','immunities','vulnerabilities','conditionImmunities'].forEach(k=>{if(!Array.isArray(c.damageDefenses[k]))c.damageDefenses[k]=[];c.damageDefenses[k]=[...new Set(c.damageDefenses[k].filter(Boolean))]});
@@ -55,8 +66,11 @@
     c.hp.max=Math.max(1,num(c.hp.max,10));c.hp.current=clamp(c.hp.current,0,c.hp.max);c.hp.temp=Math.max(0,num(c.hp.temp,0));
     if(!c.gear||typeof c.gear!=='object')c.gear=baseState().character.gear;
     if(!Array.isArray(c.gear.inventory))c.gear.inventory=[];
+    c.gear.inventory=c.gear.inventory.map(normalizeItem);
     if(!Array.isArray(c.gear.weapons))c.gear.weapons=[];
     if(!Array.isArray(c.gear.armor))c.gear.armor=[];
+    const hasActiveArmor=c.gear.inventory.some(it=>it&&typeof it==='object'&&['equipped','worn'].includes(it.location)&&(it.raw?.armor_class||/armor|shield/i.test(`${it.category||''} ${it.name||''}`)));
+    if(oldSchema<10&&c.acMode!=='manual'&&!hasActiveArmor)c.armorFormula='unarmored';
     if(!s.classes||typeof s.classes!=='object')s.classes={};
     if(!s.classes.treasureHunter||typeof s.classes.treasureHunter!=='object')s.classes.treasureHunter={};
     const th=s.classes.treasureHunter;
@@ -65,6 +79,12 @@
     if(!Array.isArray(th.ancientLanguages))th.ancientLanguages=['','',''];
     if(!Array.isArray(th.vehicles))th.vehicles=['',''];
     if(!Array.isArray(th.weaponMasteries))th.weaponMasteries=['',''];
+    ['feat4','feat8','feat12','feat16','epicBoon19'].forEach(k=>{if(!Array.isArray(th[k]))th[k]=th[k]?[String(th[k])]:[]});
+    if(!s.ui||typeof s.ui!=='object')s.ui={};
+    if(!Array.isArray(s.ui.favoriteFeatures))s.ui.favoriteFeatures=[];
+    if(!Array.isArray(s.ui.favoriteActions))s.ui.favoriteActions=[];
+    if(!['all','a','ba','r','free','other'].includes(s.ui.actionFilter))s.ui.actionFilter='all';
+    if(!['combat','favorite','name','source'].includes(s.ui.actionSort))s.ui.actionSort='combat';
     return s;
   }
 
@@ -114,5 +134,5 @@
     const scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c.toDataURL('image/jpeg',quality);
   }
 
-  window.V7SStateV7s={KEY,OLD_KEY,SCHEMA_VERSION,A,get:()=>state,update,replace,save,flush,fresh:()=>normalize(baseState()),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},modifier,signed,clone,imageToThumb,normalize};
+  window.V7SStateV7s={KEY,OLD_KEY,SCHEMA_VERSION,A,ITEM_LOCATIONS,get:()=>state,update,replace,save,flush,fresh:()=>normalize(baseState()),subscribe(fn){listeners.add(fn);return()=>listeners.delete(fn)},modifier,signed,clone,imageToThumb,normalize};
 })();
