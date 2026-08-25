@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/ux-v7s.css">
   <link rel="stylesheet" href="css/modular-v7s.css">
   <link rel="stylesheet" href="css/enhancements-v7s.css">
+  <link rel="stylesheet" href="css/compact-ux-v7s.css">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -67,10 +68,11 @@
       <label><input id="editHpAuto" type="checkbox" style="width:auto;margin-right:6px">Auto Max HP from level and CON</label>
       <div class="form-grid two">
         <label>Max HP<input id="editHpMax" type="number" min="1"></label>
-        <label>Armor Class<input id="editAc" type="number" min="0"></label>
+        <label>Manual AC<input id="editAc" type="number" min="0"></label>
         <label>Base Speed<input id="editSpeed" type="number" min="0" step="5"></label>
         <label>Initiative Bonus<input id="editInitBonus" type="number"></label>
       </div>
+      <small class="muted">Armor Class is automatic by default. Tap AC on the sheet to change armor formula or switch to Manual AC.</small>
       <div class="ability-editor" id="abilityEditor"></div>
       <menu><button value="cancel" class="ghost">Cancel</button><button id="saveEdit" value="default" class="primary">Save</button></menu>
     </form>
@@ -145,11 +147,14 @@
   <script src="js/classes/treasure-hunter/choices-v7s.js"></script>
   <script src="js/core/state-v7s.js"></script>
   <script src="js/core/rules-2024.js"></script>
+  <script src="js/core/derived-v7s.js"></script>
   <script src="js/core/roster-v7s.js"></script>
   <script src="js/core/catalog-srd.js"></script>
   <script src="js/ui/portrait-cropper.js"></script>
   <script src="js/ui/app-v8.js"></script>
   <script src="js/ui/modular-enhancements.js"></script>
+  <script src="js/ui/stat-inspector-v7s.js"></script>
+  <script src="js/ui/rest-manager-v7s.js"></script>
   <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js').catch(()=>{});</script>
 </body>
 </html>
