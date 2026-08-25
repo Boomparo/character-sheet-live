@@ -1,10 +1,9 @@
-/* V8 pager feel: one decisive horizontal gesture = one whole page. */
-.pager.swipe-v8{touch-action:pan-y;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain}
-.pager.swipe-v8.swipe-dragging,.pager.swipe-v8.swipe-settling{scroll-snap-type:none!important}
-.pager.swipe-v8.swipe-dragging{scroll-behavior:auto!important;cursor:grabbing}
-.pager.swipe-v8 .sheet-page{flex:0 0 100%!important;width:100%!important;min-width:100%!important;max-width:100%!important;scroll-snap-align:start;scroll-snap-stop:always}
+/* Native pager restoration: match the older builds that felt best on Android. */
+.pager{display:flex!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x mandatory!important;scroll-behavior:smooth!important;overscroll-behavior-x:contain!important;touch-action:pan-x pan-y!important;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.pager::-webkit-scrollbar{display:none}
+.pager>.sheet-page{flex:0 0 100%!important;width:100%!important;min-width:100%!important;max-width:100%!important;scroll-snap-align:start!important;scroll-snap-stop:always!important}
 
 /* Level checklist is intentionally removed; unresolved choices stay as compact builder warnings. */
 #characterPage #levelChecklist,#builderDialog #levelChecklist,#builderDialog #builderLevelChecklist,#builderDialog #builderLevelChecklistHost{display:none!important}
 
-@media(prefers-reduced-motion:reduce){.pager.swipe-v8{scroll-behavior:auto}}
+@media(prefers-reduced-motion:reduce){.pager{scroll-behavior:auto!important}}
