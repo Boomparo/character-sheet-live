@@ -1,4 +1,5 @@
 (function(){
+  // Legacy swipe overrides are retained in the repo for rollback only: css/swipe-v8.css, js/ui/swipe-controller-v8.js. They are intentionally not loaded.
   ['css/experience-v7s.css','css/experience-v8.css','css/qol-fixes-v8.css','css/hp-v8.css','css/stability-v8.css'].forEach(href=>{if(document.querySelector(`link[href="${href}"]`))return;const css=document.createElement('link');css.rel='stylesheet';css.href=href;document.head.appendChild(css)});
   const queue=[
     'js/classes/treasure-hunter/feature-names-v8.js',
