@@ -14,6 +14,7 @@ jobs:
           node-version: 22
       - name: JavaScript syntax
         run: |
+          node --check js/core/state-events-v8.js
           node --check js/ui/interaction-fixes-v8.js
           node --check js/ui/hp-manager-v8.js
           node --check js/ui/character-builder-v7s.js
@@ -58,6 +59,8 @@ jobs:
           ! grep -q "'js/ui/swipe-controller-v8.js'" js/ui/gameplay-polish-v7s.js
           grep -q '#featuresPage .row-card.open .row-detail' css/stability-v8.css
           grep -q 'S.subscribe' js/ui/character-builder-v7s.js
+          grep -q '__stableSubscribeV8' js/core/state-events-v8.js
+          grep -q 'state-events-v8.js' js/ui/gameplay-polish-v7s.js
       - name: NPC portrait guards
         run: |
           test -s js/ui/npc-photo-v8.js
@@ -76,6 +79,7 @@ jobs:
           grep -q 'hp-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'qol-fixes-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'state-events-v8.js' service-worker.js
           grep -q 'npc-photo-v8.js' service-worker.js
           grep -q 'stability-v8.css' service-worker.js
-          grep -q 'character-sheet-v8-stability-npc-1' service-worker.js
+          grep -q 'character-sheet-v8-stability-npc-2' service-worker.js
