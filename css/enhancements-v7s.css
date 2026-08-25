@@ -1,0 +1,10 @@
+.feature-use-control,.relic-choice-control{margin-top:14px;padding:12px;border:1px solid rgba(210,171,95,.28);border-radius:12px;background:rgba(0,0,0,.16)}
+.feature-use-control{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.feature-use-control>div:first-child{display:grid;gap:2px}.feature-use-control strong{font-size:1.05rem}
+.feature-use-dots{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.feature-use-dot{width:32px;height:32px;min-width:32px;border-radius:50%;border:2px solid rgba(218,178,99,.7);background:rgba(0,0,0,.28);box-shadow:inset 0 0 0 3px rgba(0,0,0,.22)}
+.feature-use-dot.filled{background:radial-gradient(circle at 38% 34%,#f3d48e,#ae742d 72%);border-color:#ebc77b}
+.relic-choice-control label{display:grid;gap:7px;font-weight:700}.relic-choice-control select{min-height:48px;font-size:1rem}
+.save-roll-flag{position:absolute;right:6px;top:6px;width:30px!important;min-width:30px!important;height:30px!important;min-height:30px!important;padding:0!important;border-radius:50%!important;font-size:.88rem!important;font-weight:900!important;z-index:2}
+.ability{position:relative}.save-roll-flag.normal{opacity:.45}.save-roll-flag.advantage{background:#1e6d42!important;border-color:#55c780!important;color:#fff!important;opacity:1}.save-roll-flag.disadvantage{background:#8d2e36!important;border-color:#e17279!important;color:#fff!important;opacity:1}
+@media (max-width:430px){.feature-use-dot{width:34px;height:34px;min-width:34px}.feature-use-control{align-items:flex-start;flex-direction:column}.feature-use-dots{justify-content:flex-start}}
