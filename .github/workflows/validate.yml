@@ -1,7 +1,7 @@
 name: Validate live sheet
 on:
   push:
-    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist, v8-native-swipe-restore]
+    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux, v7s-experience-complete, v8-swipe-builder-checklist, v8-native-swipe-restore, v8-hp-temp-manager]
   pull_request:
     branches: [main]
 jobs:
@@ -26,6 +26,8 @@ jobs:
         run: node --check js/ui/builder-checklist-v8.js
       - name: Swipe controller syntax
         run: node --check js/ui/swipe-controller-v8.js
+      - name: HP manager syntax
+        run: node --check js/ui/hp-manager-v8.js
       - name: Import syntax
         run: node --check js/ui/import-v7s.js
       - name: Gameplay loader syntax
@@ -61,6 +63,8 @@ jobs:
           test -s css/experience-v7s.css
           test -s css/experience-v8.css
           test -s css/swipe-v8.css
+          test -s css/hp-v8.css
+          test -s js/ui/hp-manager-v8.js
           test -s manifest.webmanifest
           test -s assets/icon.svg
           test -s assets/treasure-ornament.svg
@@ -97,7 +101,9 @@ jobs:
           grep -q 'experience-extras-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'swipe-controller-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'hp-manager-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'css/swipe-v8.css' js/ui/gameplay-polish-v7s.js
+          grep -q 'css/hp-v8.css' js/ui/gameplay-polish-v7s.js
           grep -q 'import-v7s.js' js/ui/gameplay-polish-v7s.js
           grep -q 'NATIVE_SWIPE_RESTORED' js/ui/swipe-controller-v8.js
           ! grep -q 'pointermove' js/ui/swipe-controller-v8.js
@@ -105,6 +111,9 @@ jobs:
           grep -q 'touch-action:pan-x pan-y' css/swipe-v8.css
           grep -q 'scroll-snap-type:x mandatory' css/swipe-v8.css
           grep -q '#characterPage #levelChecklist' css/swipe-v8.css
+          grep -q 'h.temp-=absorbed' js/ui/hp-manager-v8.js
+          grep -q 'hpAmountWheel' js/ui/hp-manager-v8.js
+          grep -q 'hpAmountInput' js/ui/hp-manager-v8.js
           grep -q 'City Goblin' js/core/campaign-origin-v7s.js
           grep -q 'Darkvision 60 ft' js/core/campaign-origin-v7s.js
           grep -q 'Lukyho univerzální background' js/core/campaign-origin-v7s.js
