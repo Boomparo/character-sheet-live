@@ -1,5 +1,5 @@
-const CACHE='character-sheet-v7s-beyond-polish-2';
-const SHELL=['./','./index.html','./css/v7s.css','./css/ux-v7s.css','./js/classes/treasure-hunter/data-v7s.js','./js/classes/treasure-hunter/relics-v7s.js','./js/core/state-v7s.js','./js/core/rules-2024.js','./js/ui/app-v7s.js','./manifest.webmanifest','./assets/icon.svg'];
+const CACHE='character-sheet-v7s-modular-1';
+const SHELL=['./','./index.html','./css/v7s.css','./css/ux-v7s.css','./css/modular-v7s.css','./js/classes/treasure-hunter/data-v7s.js','./js/classes/treasure-hunter/relics-v7s.js','./js/classes/treasure-hunter/choices-v7s.js','./js/core/state-v7s.js','./js/core/rules-2024.js','./js/core/roster-v7s.js','./js/core/catalog-srd.js','./js/ui/portrait-cropper.js','./js/ui/app-v8.js','./manifest.webmanifest','./assets/icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./index.html'))))});
