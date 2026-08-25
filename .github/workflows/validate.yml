@@ -43,4 +43,5 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v9-stabilization-2' service-worker.js
+          grep -q 'character-sheet-v9-stabilization-3' service-worker.js
+          grep -q "service-worker.js?v=9.0.2" index.html

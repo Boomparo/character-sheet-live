@@ -45,7 +45,7 @@ const C = global.CharacterCommands;
 const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 
-assert.equal(S.APP_VERSION, '9.0.1-stabilization');
+assert.equal(S.APP_VERSION, '9.0.2-stabilization');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -209,7 +209,7 @@ test('final source names and complete relic catalog are wired', () => {
 
 test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const scripts = [...index.matchAll(/<script src="([^"]+)"/g)].map(match => match[1]);
+  const scripts = [...index.matchAll(/<script src="([^"]+)"/g)].map(match => match[1].split('?')[0]);
   assert.ok(scripts.includes('js/ui/app-v9.js'));
   assert.equal(scripts.filter(file => /js\/ui\/app-v\d/.test(file)).length, 1);
   assert.equal(scripts.some(file => /gameplay-polish-v7s\.js|modular-enhancements\.js|interaction-fixes|experience-extras|builder-checklist|hp-manager/.test(file)), false);
@@ -224,6 +224,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
+  assert.match(index, /service-worker\.js\?v=9\.0\.2/);
   assert.match(app, /\['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
   const npcRenderer = app.slice(app.indexOf('function renderNpcs()'), app.indexOf('function renderAll()'));
   assert.equal(npcRenderer.includes('npcDeleteBtn'), false, 'NPC list renderer must not expose deletion');
