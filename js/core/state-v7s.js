@@ -1,20 +1,21 @@
 (function(){
   const KEY='character-sheet-v7s';
   const OLD_KEY='occultist-sheet-v1';
-  const SCHEMA_VERSION=8;
+  const SCHEMA_VERSION=9;
   const A=['STR','DEX','CON','INT','WIS','CHA'];
   const clone=v=>JSON.parse(JSON.stringify(v));
 
   function baseState(){return {
-    schemaVersion:SCHEMA_VERSION,appVersion:'7s.3.0-modular',
+    schemaVersion:SCHEMA_VERSION,appVersion:'7s.4.0-ux',
     character:{
       name:'',race:'',classKey:'treasureHunter',level:1,portrait:'',
       hp:{current:10,max:10,temp:0,auto:true},
       hitDice:{d10:{spent:0}},
-      ac:10,speed:30,initiativeBonus:0,inspiration:false,
+      ac:10,acMode:'auto',acManual:10,armorFormula:'leather',acBonus:0,
+      speed:30,initiativeBonus:0,inspiration:false,
       abilities:{STR:10,DEX:10,CON:10,INT:10,WIS:10,CHA:10},
       conditions:[],exhaustion:0,skills:{},
-      rollModes:{initiative:'normal',skills:{}},
+      rollModes:{initiative:'normal',skills:{},saves:{}},
       customActions:[],
       damageDefenses:{resistances:[],immunities:[],vulnerabilities:[],conditionImmunities:[]},
       proficiencies:{languages:[],vehicles:[],tools:["Thieves' Tools","Navigator's Tools"],weapons:[],armor:['Light Armor'],senses:[],defenses:[]},
@@ -30,7 +31,7 @@
   function clamp(n,a,b){return Math.max(a,Math.min(b,num(n,a)))}
 
   function normalize(s){
-    s.schemaVersion=SCHEMA_VERSION;s.appVersion='7s.3.0-modular';
+    s.schemaVersion=SCHEMA_VERSION;s.appVersion='7s.4.0-ux';
     const c=s.character||(s.character={});
     c.level=clamp(c.level,1,20);
     c.conditions=Array.isArray(c.conditions)?c.conditions.filter(Boolean):[];
@@ -39,21 +40,28 @@
     c.hitDice=c.hitDice&&typeof c.hitDice==='object'?c.hitDice:{};
     c.hitDice.d10=c.hitDice.d10&&typeof c.hitDice.d10==='object'?c.hitDice.d10:{spent:0};
     c.hitDice.d10.spent=clamp(c.hitDice.d10.spent,0,c.level);
+    c.acMode=['auto','manual'].includes(c.acMode)?c.acMode:'auto';
+    c.acManual=Math.max(0,num(c.acManual,c.ac??10));
+    c.armorFormula=typeof c.armorFormula==='string'&&c.armorFormula?c.armorFormula:'leather';
+    c.acBonus=num(c.acBonus,0);
     c.damageDefenses=c.damageDefenses&&typeof c.damageDefenses==='object'?c.damageDefenses:{};
     ['resistances','immunities','vulnerabilities','conditionImmunities'].forEach(k=>{if(!Array.isArray(c.damageDefenses[k]))c.damageDefenses[k]=[];c.damageDefenses[k]=[...new Set(c.damageDefenses[k].filter(Boolean))]});
-    c.rollModes=c.rollModes&&typeof c.rollModes==='object'?c.rollModes:{initiative:'normal',skills:{}};
+    c.rollModes=c.rollModes&&typeof c.rollModes==='object'?c.rollModes:{initiative:'normal',skills:{},saves:{}};
     if(!['normal','advantage','disadvantage'].includes(c.rollModes.initiative))c.rollModes.initiative='normal';
     c.rollModes.skills=c.rollModes.skills&&typeof c.rollModes.skills==='object'?c.rollModes.skills:{};
+    c.rollModes.saves=c.rollModes.saves&&typeof c.rollModes.saves==='object'?c.rollModes.saves:{};
     if(!Array.isArray(c.customActions))c.customActions=[];
     if(!c.hp||typeof c.hp!=='object')c.hp={current:10,max:10,temp:0,auto:true};
     c.hp.max=Math.max(1,num(c.hp.max,10));c.hp.current=clamp(c.hp.current,0,c.hp.max);c.hp.temp=Math.max(0,num(c.hp.temp,0));
     if(!c.gear||typeof c.gear!=='object')c.gear=baseState().character.gear;
     if(!Array.isArray(c.gear.inventory))c.gear.inventory=[];
     if(!Array.isArray(c.gear.weapons))c.gear.weapons=[];
+    if(!Array.isArray(c.gear.armor))c.gear.armor=[];
     if(!s.classes||typeof s.classes!=='object')s.classes={};
     if(!s.classes.treasureHunter||typeof s.classes.treasureHunter!=='object')s.classes.treasureHunter={};
     const th=s.classes.treasureHunter;
     if(!th.choices||typeof th.choices!=='object')th.choices={};
+    if(!th.featureUses||typeof th.featureUses!=='object')th.featureUses={};
     if(!Array.isArray(th.ancientLanguages))th.ancientLanguages=['','',''];
     if(!Array.isArray(th.vehicles))th.vehicles=['',''];
     if(!Array.isArray(th.weaponMasteries))th.weaponMasteries=['',''];
@@ -73,7 +81,7 @@
       s.character.hp.current=num(old.hpCurrent??old.currentHp??hp.current,s.character.hp.max);
       s.character.hp.temp=num(old.tempHp??hp.temp,0);
       s.character.hp.auto=typeof hp.auto==='boolean'?hp.auto:false;
-      s.character.ac=num(old.ac??c.ac,10);s.character.speed=num(old.speed??c.speed,30);
+      s.character.ac=num(old.ac??c.ac,10);s.character.acManual=s.character.ac;s.character.speed=num(old.speed??c.speed,30);
       s.character.inspiration=!!(old.inspiration??c.inspiration);
       s.character.exhaustion=clamp(old.exhaustion??c.exhaustion,0,6);
       A.forEach(a=>{const low=a.toLowerCase(),v=old.abilities?.[a]??old.abilities?.[low]??c.abilities?.[a]??old[low]??old[a];if(v!=null)s.character.abilities[a]=num(v,10)});
