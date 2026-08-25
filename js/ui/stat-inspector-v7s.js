@@ -2,7 +2,7 @@
   const S=window.V7SStateV7s,T=window.TreasureHunterDataV7s,R=window.DND2024Rules,D=window.V7SDerived;
   if(!S||!T||!R||!D)return;
   const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const signed=n=>Number(n)>=0?`+${Number(n)}`:`${Number(n)}`;
   let active='',scheduled=false,patching=false;const observer=new MutationObserver(()=>schedule());
   function inject(){if($('#statDialog'))return;document.body.insertAdjacentHTML('beforeend',`<dialog id="statDialog" class="sheet-dialog stat-dialog"><form method="dialog"><div class="dialog-head"><strong id="statTitle">Stat</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="statValue" class="stat-dialog-value"></div><div id="statFormula" class="formula-list"></div><div id="statEditor" class="stat-editor"></div><menu><button value="cancel" class="ghost">Close</button><button id="saveStat" type="button" class="primary" hidden>Save</button></menu></form></dialog>`);$('#saveStat').addEventListener('click',save)}
