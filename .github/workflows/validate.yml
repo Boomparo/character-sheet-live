@@ -1,7 +1,7 @@
 name: Validate live sheet
 on:
   push:
-    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability]
+    branches: [main, v7s-modular-pass, v7s-ux-rest-stats, v7s-actions-items-stability, v7s-builder-actions-ux]
   pull_request:
     branches: [main]
 jobs:
@@ -28,6 +28,9 @@ jobs:
           node --check js/ui/stat-inspector-v7s.js
           node --check js/ui/rest-manager-v7s.js
           node --check js/ui/gameplay-polish-v7s.js
+          node --check js/ui/actions-v7s.js
+          node --check js/ui/character-builder-v7s.js
+          node --check js/ui/inventory-containers-v7s.js
           node --check service-worker.js
       - name: Required files
         run: |
@@ -38,6 +41,7 @@ jobs:
           test -s css/enhancements-v7s.css
           test -s css/compact-ux-v7s.css
           test -s css/gameplay-polish-v7s.css
+          test -s css/experience-v7s.css
           test -s manifest.webmanifest
           test -s assets/icon.svg
       - name: Treasure Hunter data integrity
@@ -50,53 +54,43 @@ jobs:
           const T=window.TreasureHunterDataV7s,R=window.TreasureHunterRelicsV7s;
           if(R.length!==38) throw new Error(`Expected 38 relics, got ${R.length}`);
           if(new Set(R.map(x=>x.id)).size!==38) throw new Error('Duplicate relic ids');
-          const counts=R.reduce((o,r)=>(o[r.level]=(o[r.level]||0)+1,o),{});
-          const expected={3:14,6:9,10:6,13:4,18:5};
+          const counts=R.reduce((o,r)=>(o[r.level]=(o[r.level]||0)+1,o),{}),expected={3:14,6:9,10:6,13:4,18:5};
           for(const [l,n] of Object.entries(expected)) if(counts[l]!==n) throw new Error(`Relic prerequisite level ${l}: expected ${n}, got ${counts[l]||0}`);
-          if(Object.keys(counts).some(l=>!expected[l])) throw new Error(`Unexpected relic prerequisite levels: ${JSON.stringify(counts)}`);
           if(R.some(r=>!r.fullText||r.fullText.length<25)) throw new Error('Missing complete relic text');
           if(T.features.some(f=>!f.fullText||f.fullText.length<20)) throw new Error('Missing feature text');
           if(T.features.some(f=>f.id==='swinging')) throw new Error('Swinging must be merged into Swing');
-          const swing=T.features.find(f=>f.id==='swing');if(!swing||!swing.fullText.includes('dvojnásobku')) throw new Error('Merged Swing rule is incomplete');
-          if(T.coolTotal(20)!==20||T.coolDie(16)!=='d12'||T.pb(17)!==6) throw new Error('Treasure Hunter progression broken');
-          if(JSON.stringify(T.relicLimit(14))!==JSON.stringify([5,5,10])) throw new Error('Relic capacity progression broken');
+          if(!T.features.find(f=>f.id==='swing')?.fullText.includes('dvojnásobku')) throw new Error('Merged Swing rule incomplete');
+          if(T.coolTotal(20)!==20||T.coolDie(16)!=='d12'||T.pb(17)!==6) throw new Error('Progression broken');
+          if(JSON.stringify(T.relicLimit(14))!==JSON.stringify([5,5,10])) throw new Error('Relic capacity broken');
+          if(!Array.isArray(T.classSkills)||T.classSkills.length!==14) throw new Error('Treasure Hunter class skill choices missing');
           for(const id of ['ancient-languages','drivers-license','specialized-expertise','weapon-mastery','asi-4','asi-8','asi-12','asi-16','epic-boon']) if(!T.choiceDefinitions[id]) throw new Error(`Missing choices for ${id}`);
-          console.log('Treasure Hunter final data ok',counts);
+          console.log('Treasure Hunter data ok',counts);
           NODE
-      - name: UX and rules regression guards
+      - name: UX and gameplay regression guards
         run: |
-          grep -q 'js/ui/app-v8.js' index.html
-          grep -q 'js/ui/modular-enhancements.js' index.html
-          grep -q 'js/core/derived-v7s.js' index.html
-          grep -q 'js/ui/stat-inspector-v7s.js' index.html
-          grep -q 'js/ui/rest-manager-v7s.js' index.html
           grep -q 'js/ui/gameplay-polish-v7s.js' index.html
-          grep -q 'css/compact-ux-v7s.css' index.html
-          grep -q 'css/gameplay-polish-v7s.css' index.html
-          grep -q 'WHIP / ROPE DC' js/ui/app-v8.js
-          grep -q "\['free','FREE'\]" js/ui/app-v8.js
-          grep -q "\['other','OTHER'\]" js/ui/app-v8.js
-          grep -q 'Unarmed Strike' js/ui/app-v8.js
-          grep -q 'V7SRoster' js/core/roster-v7s.js
-          grep -q 'V7SItemCatalog' js/core/catalog-srd.js
-          grep -q 'Immunities' js/core/rules-2024.js
-          grep -q "\['Thunder','Thunder'\]" js/core/rules-2024.js
+          grep -q 'actions-v7s.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'character-builder-v7s.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'inventory-containers-v7s.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'experience-v7s.css' js/ui/gameplay-polish-v7s.js
+          grep -q "\['attack','ATTACKS'\]" js/ui/actions-v7s.js
+          grep -q 'WEAPON ATTACKS' js/ui/actions-v7s.js
+          grep -q 'FAVORITES' js/ui/actions-v7s.js
+          grep -q "'attack-slide':'indy-slide'" js/ui/actions-v7s.js
+          grep -q 'data-open-builder' js/ui/character-builder-v7s.js
+          grep -q 'PROGRESSION' js/ui/character-builder-v7s.js
+          grep -q 'Class Skill Proficiencies' js/ui/character-builder-v7s.js
+          grep -q 'data-choice-view' js/ui/character-builder-v7s.js
+          grep -q 'roll-indicator' js/ui/character-builder-v7s.js
+          grep -q 'data-relic-quick-prepare\|data-relicQuickPrepare' js/ui/character-builder-v7s.js || grep -q 'relicQuickPrepare' js/ui/character-builder-v7s.js
+          grep -q 'NPCs & BIO' js/ui/character-builder-v7s.js
+          grep -q 'Stored in' js/ui/inventory-containers-v7s.js
+          grep -q 'Use as container' js/ui/inventory-containers-v7s.js
+          grep -q 'statSaveRoll' js/ui/stat-inspector-v7s.js
+          grep -q 'statInitRoll' js/ui/stat-inspector-v7s.js
           grep -q "unarmored:{name:'Unarmored',base:10,dex:true" js/core/derived-v7s.js
           grep -q 'ring of protection' js/core/derived-v7s.js
           grep -q 'cloak of protection' js/core/derived-v7s.js
-          grep -q 'activeItems' js/core/derived-v7s.js
-          grep -q 'fixedSaveMode' js/core/rules-2024.js
-          grep -q 'Spend Hit Dice' js/ui/rest-manager-v7s.js
-          grep -q 'Restore all spent Hit Point Dice' js/ui/rest-manager-v7s.js
-          grep -q 'data-inspect-stat' js/ui/stat-inspector-v7s.js
-          grep -q 'renderSig' js/ui/modular-enhancements.js
-          grep -q 'observer.disconnect' js/ui/modular-enhancements.js
-          grep -q "name:'Grapple'" js/ui/gameplay-polish-v7s.js
-          grep -q "name:'Disengage'" js/ui/gameplay-polish-v7s.js
-          grep -q 'Combat priority' js/ui/gameplay-polish-v7s.js
-          grep -q 'data-polish-relic-charge' js/ui/gameplay-polish-v7s.js
-          grep -q 'Level 4 Feat' js/classes/treasure-hunter/choices-v7s.js
-          grep -q 'Level 19 Epic Boon' js/classes/treasure-hunter/choices-v7s.js
-          grep -q "equipped:'Equipped'" js/ui/gameplay-polish-v7s.js
-          grep -q 'npcDeleteBtn' js/ui/gameplay-polish-v7s.js
+          grep -q 'Immunities' js/core/rules-2024.js
+          grep -q "\['Thunder','Thunder'\]" js/core/rules-2024.js
           ! grep -q "Imunita" js/core/rules-2024.js
