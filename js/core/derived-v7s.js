@@ -65,10 +65,10 @@
   }
   function armorBreakdown(){
     const c=state().character;if(c.acMode==='manual')return{value:armorClass(),label:'Manual AC',parts:[['Manual AC',armorClass()]]};
-    const f=equippedArmor(),raw=mod('DEX'),dex=f.dex?(f.cap==null?raw:Math.min(f.cap,raw)):0,parts=[];
+    const f=equippedArmor(),raw=mod('DEX'),parts=[];
     if(f.item)parts.push(['Armor',`${f.name}: ${f.base}`]);else parts.push(['Base','Unarmored: 10']);
     if(f.dex)parts.push(['DEX',`${signed(raw)}${f.cap!=null?` (max +${f.cap})`:''}`]);
-    if(f.enhancement)parts.push(['Armor enhancement',signed(f.enhancement));
+    if(f.enhancement)parts.push(['Armor enhancement',signed(f.enhancement)]);
     const itemBonus=itemAcBonus();if(itemBonus)parts.push(['Equipped items',signed(itemBonus)]);
     const relicBonus=relicAcBonus();if(relicBonus)parts.push(['Prepared relics',signed(relicBonus)]);
     const misc=Number(c.acBonus)||0;if(misc)parts.push(['Other bonus',signed(misc)]);
