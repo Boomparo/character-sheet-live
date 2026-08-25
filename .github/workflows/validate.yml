@@ -12,31 +12,38 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: JavaScript syntax
+      - name: Feature names syntax
+        run: node --check js/classes/treasure-hunter/feature-names-v8.js
+      - name: Campaign origin syntax
+        run: node --check js/core/campaign-origin-v7s.js
+      - name: Background extras syntax
+        run: node --check js/core/background-extras-v8.js
+      - name: Origin builder syntax
+        run: node --check js/ui/origin-builder-v7s.js
+      - name: Experience extras syntax
+        run: node --check js/ui/experience-extras-v8.js
+      - name: Import syntax
+        run: node --check js/ui/import-v7s.js
+      - name: Gameplay loader syntax
+        run: node --check js/ui/gameplay-polish-v7s.js
+      - name: Existing JavaScript syntax
         run: |
           node --check js/classes/treasure-hunter/data-v7s.js
           node --check js/classes/treasure-hunter/relics-v7s.js
           node --check js/classes/treasure-hunter/choices-v7s.js
-          node --check js/classes/treasure-hunter/feature-names-v8.js
           node --check js/core/state-v7s.js
           node --check js/core/rules-2024.js
           node --check js/core/derived-v7s.js
           node --check js/core/roster-v7s.js
           node --check js/core/catalog-srd.js
-          node --check js/core/campaign-origin-v7s.js
-          node --check js/core/background-extras-v8.js
           node --check js/ui/portrait-cropper.js
           node --check js/ui/app-v8.js
           node --check js/ui/modular-enhancements.js
           node --check js/ui/stat-inspector-v7s.js
           node --check js/ui/rest-manager-v7s.js
-          node --check js/ui/gameplay-polish-v7s.js
           node --check js/ui/actions-v7s.js
           node --check js/ui/character-builder-v7s.js
           node --check js/ui/inventory-containers-v7s.js
-          node --check js/ui/origin-builder-v7s.js
-          node --check js/ui/experience-extras-v8.js
-          node --check js/ui/import-v7s.js
           node --check service-worker.js
       - name: Required files
         run: |
