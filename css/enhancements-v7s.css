@@ -5,6 +5,12 @@
 .feature-use-dot{width:32px;height:32px;min-width:32px;border-radius:50%;border:2px solid rgba(218,178,99,.7);background:rgba(0,0,0,.28);box-shadow:inset 0 0 0 3px rgba(0,0,0,.22)}
 .feature-use-dot.filled{background:radial-gradient(circle at 38% 34%,#f3d48e,#ae742d 72%);border-color:#ebc77b}
 .relic-choice-control label{display:grid;gap:7px;font-weight:700}.relic-choice-control select{min-height:48px;font-size:1rem}
-.save-roll-flag{position:absolute;right:6px;top:6px;width:30px!important;min-width:30px!important;height:30px!important;min-height:30px!important;padding:0!important;border-radius:50%!important;font-size:.88rem!important;font-weight:900!important;z-index:2}
-.ability{position:relative}.save-roll-flag.normal{opacity:.45}.save-roll-flag.advantage{background:#1e6d42!important;border-color:#55c780!important;color:#fff!important;opacity:1}.save-roll-flag.disadvantage{background:#8d2e36!important;border-color:#e17279!important;color:#fff!important;opacity:1}
+
+.roll-flag,.save-roll-flag{display:inline-flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1!important;padding:0!important;text-indent:0!important}
+.save-control{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;margin-top:4px!important;padding-top:4px!important;border-top:1px solid #3d2d26!important;min-height:30px}
+.save-control .save{margin:0!important;padding:0!important;border:0!important;white-space:nowrap}
+.save-roll-flag{position:static!important;right:auto!important;top:auto!important;width:25px!important;min-width:25px!important;height:25px!important;min-height:25px!important;border-radius:50%!important;font-size:.72rem!important;font-weight:900!important;z-index:auto!important;flex:0 0 25px}
+.save-roll-flag.normal{opacity:.52}.save-roll-flag.advantage{background:#1e6d42!important;border-color:#55c780!important;color:#fff!important;opacity:1}.save-roll-flag.disadvantage{background:#8d2e36!important;border-color:#e17279!important;color:#fff!important;opacity:1}
+.roll-flag.locked{cursor:not-allowed;box-shadow:inset 0 0 0 1px #fff3}
+
 @media (max-width:430px){.feature-use-dot{width:34px;height:34px;min-width:34px}.feature-use-control{align-items:flex-start;flex-direction:column}.feature-use-dots{justify-content:flex-start}}
