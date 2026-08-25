@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/v7s.css">
   <link rel="stylesheet" href="css/ux-v7s.css">
   <link rel="stylesheet" href="css/modular-v7s.css">
+  <link rel="stylesheet" href="css/enhancements-v7s.css">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -119,7 +120,7 @@
       <div class="dialog-head"><strong>Characters</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div>
       <button type="button" class="small-btn primary" data-roster-new>+ New Character</button>
       <div id="rosterList" class="roster-list top-gap"></div>
-      <div class="cloud-note">Characters are stored locally for now. The roster is already structured so cloud sync can be connected later without redesigning the sheet.</div>
+      <div class="cloud-note">Characters are stored locally for now. Cloud sync can be connected later without redesigning the sheet.</div>
     </form>
   </dialog>
 
@@ -148,6 +149,7 @@
   <script src="js/core/catalog-srd.js"></script>
   <script src="js/ui/portrait-cropper.js"></script>
   <script src="js/ui/app-v8.js"></script>
+  <script src="js/ui/modular-enhancements.js"></script>
   <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js').catch(()=>{});</script>
 </body>
 </html>
