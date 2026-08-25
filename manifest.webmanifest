@@ -1,0 +1,14 @@
+{
+  "name": "Character Sheet V7s",
+  "short_name": "V7s Sheet",
+  "description": "Android-first Treasure Hunter character sheet.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#171310",
+  "theme_color": "#641f28",
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src":"assets/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
