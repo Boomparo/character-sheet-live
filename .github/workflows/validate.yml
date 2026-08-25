@@ -24,6 +24,7 @@ jobs:
           node --check js/core/roster-v7s.js
           node --check js/core/catalog-srd.js
           node --check js/core/campaign-origin-v7s.js
+          node --check js/core/background-extras-v8.js
           node --check js/ui/portrait-cropper.js
           node --check js/ui/app-v8.js
           node --check js/ui/modular-enhancements.js
@@ -80,6 +81,7 @@ jobs:
         run: |
           grep -q 'feature-names-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'campaign-origin-v7s.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'background-extras-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'experience-extras-v8.js' js/ui/gameplay-polish-v7s.js
           grep -q 'import-v7s.js' js/ui/gameplay-polish-v7s.js
           grep -q 'City Goblin' js/core/campaign-origin-v7s.js
@@ -89,6 +91,9 @@ jobs:
           grep -q 'Resilient' js/core/campaign-origin-v7s.js
           grep -q 'Savage Attacker' js/core/campaign-origin-v7s.js
           grep -q 'Tough' js/core/campaign-origin-v7s.js
+          grep -q 'Luck Points' js/core/background-extras-v8.js
+          grep -q 'Battle Medic' js/core/background-extras-v8.js
+          grep -q 'Origin Features' js/core/background-extras-v8.js
           grep -q 'COMBAT MODE' js/ui/experience-extras-v8.js
           grep -q 'Death Saves' js/ui/experience-extras-v8.js
           grep -q 'Roll History' js/ui/experience-extras-v8.js
