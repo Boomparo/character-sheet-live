@@ -13,13 +13,13 @@
   <div id="app" class="app-shell">
     <header class="topbar">
       <div class="identity-mini"><strong id="topName">Postava</strong><span id="topClass">Treasure Hunter</span></div>
-      <div class="top-actions"><button id="searchBtn" class="icon-btn" aria-label="Search">⌕</button><button id="editBtn" class="icon-btn" aria-label="Edit character">⚒</button></div>
+      <div class="top-actions"><button id="searchBtn" class="icon-btn" aria-label="Hledat">⌕</button><button id="editBtn" class="icon-btn" aria-label="Upravit postavu">⚒</button></div>
     </header>
 
-    <nav class="page-position" aria-label="Character sheet page">
-      <button id="prevPage" class="page-arrow" aria-label="Previous page">‹</button>
+    <nav class="page-position" aria-label="Stránka character sheetu">
+      <button id="prevPage" class="page-arrow" aria-label="Předchozí stránka">‹</button>
       <div class="page-position-center"><strong id="pageTitle">CHARACTER</strong><div id="pageDots" class="page-dots"></div></div>
-      <button id="nextPage" class="page-arrow" aria-label="Next page">›</button>
+      <button id="nextPage" class="page-arrow" aria-label="Další stránka">›</button>
     </nav>
 
     <main id="pager" class="pager" tabindex="0">
@@ -34,57 +34,86 @@
 
     <footer class="mini-hud">
       <button data-open-hp><span>HP</span><b id="hudHp">0/0</b></button>
-      <button data-jump="character"><span>AC</span><b id="hudAc">10</b></button>
-      <button data-jump="character"><span>COOL</span><b id="hudCool">0/0</b></button>
+      <button data-detail="ac"><span>AC</span><b id="hudAc">10</b></button>
+      <button data-detail="cool"><span>COOL</span><b id="hudCool">0/0</b></button>
     </footer>
   </div>
 
   <dialog id="hpDialog" class="sheet-dialog hp-dialog">
     <form method="dialog">
-      <div class="dialog-head"><strong>Hit Points</strong><button value="cancel" class="icon-btn">×</button></div>
-      <div class="hp-status"><div><span>CURRENT</span><b id="hpCurrent">0</b></div><div><span>MAX</span><b id="hpMax">0</b></div><div><span>TEMP</span><b>HP</b></div></div>
+      <div class="dialog-head"><strong>Životy</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
+      <div class="hp-status"><div><span>AKTUÁLNÍ</span><b id="hpCurrent">0</b></div><div><span>MAXIMUM</span><b id="hpMax">0</b></div><div><span>DOČASNÉ</span><b id="hpTempRead">0</b></div></div>
       <div class="hp-wheel"><button type="button" id="hpMinus">−</button><strong id="hpAmount">1</strong><button type="button" id="hpPlus">+</button></div>
-      <div class="hp-actions"><button type="button" id="hpDamage" class="damage">Damage</button><button type="button" id="hpHeal" class="heal">Heal</button></div>
-      <label class="temp-row"><span>Temporary HP</span><input id="hpTemp" type="number" min="0"></label>
+      <label>Typ zranění<select id="hpDamageType"><option value="">Bez typu / neuplatňovat obrany</option></select></label>
+      <div id="hpDamageNote" class="calculation-note"></div>
+      <div class="hp-actions"><button type="button" id="hpDamage" class="damage">Zranění</button><button type="button" id="hpHeal" class="heal">Léčení</button></div>
+      <label class="temp-row"><span>Dočasné životy</span><input id="hpTemp" type="number" min="0"></label>
+    </form>
+  </dialog>
+
+  <dialog id="shortRestDialog" class="sheet-dialog rest-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>Krátký odpočinek</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
+      <div id="shortRestBody"></div>
+      <menu><button value="cancel" class="ghost">Zrušit</button><button type="button" id="finishShortRest" class="primary">Dokončit odpočinek</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="longRestDialog" class="sheet-dialog rest-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong>Dlouhý odpočinek</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
+      <div id="longRestBody"></div>
+      <menu><button value="cancel" class="ghost">Zrušit</button><button type="button" id="finishLongRest" class="primary">Dokončit odpočinek</button></menu>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="sheet-dialog detail-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><strong id="detailTitle">Detail</strong><button value="cancel" class="icon-btn" aria-label="Zavřít">×</button></div>
+      <div id="detailBody"></div>
+      <menu><button value="cancel" class="primary">Hotovo</button></menu>
     </form>
   </dialog>
 
   <dialog id="editDialog" class="sheet-dialog">
     <form method="dialog" id="editForm">
-      <div class="dialog-head"><strong>Character</strong><button value="cancel" class="icon-btn">×</button></div>
+      <div class="dialog-head"><strong>Postava</strong><button value="cancel" class="icon-btn">×</button></div>
       <div id="portraitPreview" class="portrait-preview"><span>Bez portrétu</span></div>
-      <label>Portrait<input id="editPortrait" type="file" accept="image/*"></label>
-      <div class="form-grid two"><label>Name<input id="editName" autocomplete="off"></label><label>Race<input id="editRace" autocomplete="off"></label></div>
-      <label>Level<input id="editLevel" type="number" min="1" max="20"></label>
-      <label><input id="editHpAuto" type="checkbox" style="width:auto;margin-right:6px">Auto HP podle levelu a CON</label>
+      <label>Portrét<input id="editPortrait" type="file" accept="image/*"></label>
+      <div class="form-grid two"><label>Jméno<input id="editName" autocomplete="off"></label><label>Rasa<input id="editRace" autocomplete="off"></label></div>
+      <label>Úroveň<input id="editLevel" type="number" min="1" max="20"></label>
+      <label><input id="editHpAuto" type="checkbox" style="width:auto;margin-right:6px">Automatické maximum životů podle úrovně a Odolnosti</label>
       <div class="form-grid two">
-        <label>Max HP<input id="editHpMax" type="number" min="1"></label>
-        <label>AC<input id="editAc" type="number" min="0"></label>
-        <label>Base Speed<input id="editSpeed" type="number" min="0" step="5"></label>
-        <label>Initiative bonus<input id="editInitBonus" type="number"></label>
+        <label>Maximum životů<input id="editHpMax" type="number" min="1"></label>
+        <label>Obranné číslo<input id="editAc" type="number" min="0"></label>
+        <label>Základní Rychlost<input id="editSpeed" type="number" min="0" step="5"></label>
+        <label>Bonus k iniciativě<input id="editInitBonus" type="number"></label>
       </div>
       <div class="ability-editor" id="abilityEditor"></div>
-      <menu><button value="cancel" class="ghost">Cancel</button><button id="saveEdit" value="default" class="primary">Save</button></menu>
+      <menu><button value="cancel" class="ghost">Zrušit</button><button id="saveEdit" value="default" class="primary">Uložit</button></menu>
     </form>
   </dialog>
 
   <dialog id="searchDialog" class="sheet-dialog search-dialog">
-    <form method="dialog"><div class="dialog-head"><strong>Search</strong><button value="cancel" class="icon-btn">×</button></div><input id="globalSearch" class="search-input" placeholder="feature, relic, NPC…" autocomplete="off"><div id="globalSearchResults" class="search-results"></div></form>
+    <form method="dialog"><div class="dialog-head"><strong>Hledat</strong><button value="cancel" class="icon-btn">×</button></div><input id="globalSearch" class="search-input" placeholder="feature, relikvie, NPC…" autocomplete="off"><div id="globalSearchResults" class="search-results"></div></form>
   </dialog>
 
   <dialog id="npcDialog" class="sheet-dialog">
     <form method="dialog" id="npcForm">
       <div class="dialog-head"><strong>NPC</strong><button value="cancel" class="icon-btn">×</button></div>
-      <input id="npcId" type="hidden"><label>Name<input id="npcName" required></label>
-      <div class="form-grid two"><label>Tag<input id="npcTag" placeholder="ALLY / CONTACT…"></label><label>Location<input id="npcLocation"></label></div>
-      <label>Portrait<input id="npcImage" type="file" accept="image/*"></label><label>Notes<textarea id="npcNotes" rows="7"></textarea></label>
-      <menu><button value="cancel" class="ghost">Cancel</button><button id="saveNpc" value="default" class="primary">Save NPC</button></menu>
+      <input id="npcId" type="hidden"><label>Jméno<input id="npcName" required></label>
+      <div class="form-grid two"><label>Tag<input id="npcTag" placeholder="ALLY / CONTACT…"></label><label>Místo<input id="npcLocation"></label></div>
+      <label>Portrét<input id="npcImage" type="file" accept="image/*"></label><label>Poznámky<textarea id="npcNotes" rows="7"></textarea></label>
+      <menu><button value="cancel" class="ghost">Zrušit</button><button id="saveNpc" value="default" class="primary">Uložit NPC</button></menu>
     </form>
   </dialog>
+
+  <div id="toastHost" class="toast-host" aria-live="polite" aria-atomic="true"></div>
 
   <script src="js/classes/treasure-hunter/data-v7s.js"></script>
   <script src="js/classes/treasure-hunter/relics-v7s.js"></script>
   <script src="js/core/state-v7s.js"></script>
+  <script src="js/core/rules-2024.js"></script>
   <script src="js/ui/app-v7s.js"></script>
   <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js').catch(()=>{});</script>
 </body>
