@@ -1,0 +1,39 @@
+name: Validate QOL fixes
+on:
+  push:
+    branches: [main, v8-builder-features-money]
+  pull_request:
+    branches: [main]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JavaScript syntax
+        run: |
+          node --check js/ui/interaction-fixes-v8.js
+          node --check js/ui/builder-checklist-v8.js
+          node --check js/ui/gameplay-polish-v7s.js
+          node --check service-worker.js
+      - name: Wiring and UX guards
+        run: |
+          test -s css/qol-fixes-v8.css
+          grep -q "interaction-fixes-v8.js" js/ui/gameplay-polish-v7s.js
+          grep -q "qol-fixes-v8.css" js/ui/gameplay-polish-v7s.js
+          grep -q "interaction-fixes-v8.js" service-worker.js
+          grep -q "qol-fixes-v8.css" service-worker.js
+          grep -q "data-builder-choice" js/ui/interaction-fixes-v8.js
+          grep -q "bExpertise" js/ui/interaction-fixes-v8.js
+          grep -q "bMastery0" js/ui/interaction-fixes-v8.js
+          grep -q "Starting Equipment" js/ui/interaction-fixes-v8.js
+          grep -q "TEMP" js/ui/interaction-fixes-v8.js
+          grep -q "Gold, Electrum, Silver, Copper" js/ui/interaction-fixes-v8.js
+          grep -q "GP" js/ui/interaction-fixes-v8.js
+          grep -q "EP" js/ui/interaction-fixes-v8.js
+          grep -q "SP" js/ui/interaction-fixes-v8.js
+          grep -q "CP" js/ui/interaction-fixes-v8.js
+          grep -q "levelChecklist" js/ui/builder-checklist-v8.js
+          grep -q "roll-pill" css/qol-fixes-v8.css
