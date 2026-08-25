@@ -2,10 +2,10 @@
   const S=window.V7SStateV7s,T=window.TreasureHunterDataV7s;
   if(!S||!T)return;
   const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#039;'}[m]));
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
   const SKILLS=['Acrobatics','Animal Handling','Arcana','Athletics','Deception','History','Insight','Intimidation','Investigation','Medicine','Nature','Perception','Performance','Persuasion','Religion','Sleight of Hand','Stealth','Survival'];
   const MASTERY_WEAPONS=['Club','Dagger','Greatclub','Handaxe','Javelin','Light Hammer','Mace','Quarterstaff','Sickle','Spear','Light Crossbow','Dart','Shortbow','Sling','Rapier','Scimitar','Shortsword','Whip','Hand Crossbow','Heavy Crossbow','Longbow','Pistol','Musket','Revolver','Rifle','Shotgun'];
-  let scheduled=false,patching=false,observer=null;
+  let scheduled=false,patching=false;
 
   function state(){return S.get()}
   function persistDirect(){try{S.normalize(state());localStorage.setItem(S.KEY,JSON.stringify(state()))}catch(e){}}
@@ -87,9 +87,8 @@
     let wallet=sec.querySelector('.money-wallet');if(!wallet){wallet=document.createElement('div');wallet.className='money-wallet';wallet.setAttribute('aria-label','Coins left to right: Gold, Electrum, Silver, Copper');wallet.innerHTML=COINS.map(x=>coinTile(...x)).join('');sec.appendChild(wallet)}else for(const [k] of COINS){const el=wallet.querySelector(`[data-coin-value="${k}"]`),v=money()[k];if(el){el.textContent=compact(v);el.title=String(Math.floor(Number(v)||0))}}
   }
 
-  function patchAll(){if(patching)return;patching=true;observer?.disconnect();try{patchBuilder();patchTempHp();patchMoney();ensureMoneyDialog()}finally{patching=false;observe()}}
+  function patchAll(){if(patching)return;patching=true;try{patchBuilder();patchTempHp();patchMoney();ensureMoneyDialog()}finally{patching=false}}
   function schedule(){if(scheduled||patching)return;scheduled=true;requestAnimationFrame(()=>{scheduled=false;patchAll()})}
-  function observe(){observer?.disconnect();observer=new MutationObserver(schedule);['#characterPage','#gearPage','#builderDialog'].forEach(sel=>{const el=$(sel);if(el)observer.observe(el,{childList:true,subtree:true})})}
 
   document.addEventListener('change',e=>{
     const el=e.target,key=choiceKey(el);if(key&&$('#featuresPage')?.contains(el)){e.preventDefault();e.stopImmediatePropagation();writeChoice(el);return}
@@ -102,6 +101,8 @@
     if(b.id==='moneySave'){e.preventDefault();e.stopImmediatePropagation();saveMoney();return}
     if(b.hasAttribute('data-open-builder')||b.dataset.builderTab)setTimeout(patchBuilder,30)
   },true);
-  document.addEventListener('DOMContentLoaded',()=>{money();persistDirect();ensureMoneyDialog();observe();setTimeout(schedule,100)});
-  setTimeout(()=>{observe();schedule()},260);
+  document.addEventListener('DOMContentLoaded',()=>{money();persistDirect();ensureMoneyDialog();setTimeout(schedule,100)});
+  S.subscribe(()=>schedule());
+  window.addEventListener('v7s:state-changed',schedule);
+  setTimeout(schedule,260);
 })();
