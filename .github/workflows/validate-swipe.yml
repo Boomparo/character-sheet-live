@@ -1,0 +1,29 @@
+name: Validate swipe and builder checklist
+on:
+  push:
+    branches: [v8-swipe-builder-checklist]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check js/ui/pager-swipe-v8.js
+          node --check js/ui/builder-checklist-v8.js
+          node --check js/ui/gameplay-polish-v7s.js
+          node --check service-worker.js
+      - name: Wiring
+        run: |
+          test -s css/swipe-builder-v8.css
+          grep -q 'pager-swipe-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'builder-checklist-v8.js' js/ui/gameplay-polish-v7s.js
+          grep -q 'swipe-builder-v8.css' js/ui/gameplay-polish-v7s.js
+          grep -q 'manual-swipe' js/ui/pager-swipe-v8.js
+          grep -q 'touch-action:pan-y' css/swipe-builder-v8.css
+          grep -q 'builderLevelChecklist' js/ui/builder-checklist-v8.js
+          grep -q 'pager-swipe-v8.js' service-worker.js
+          grep -q 'builder-checklist-v8.js' service-worker.js
