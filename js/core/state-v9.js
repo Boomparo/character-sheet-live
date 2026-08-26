@@ -3,8 +3,8 @@
 
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 11;
-  const APP_VERSION = '9.0.2-stabilization';
+  const SCHEMA_VERSION = 12;
+  const APP_VERSION = '9.2.0-sheet-ux';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'backpack', 'back', 'ground', 'storage'];
   const CHOICE_ARRAYS = [
@@ -51,7 +51,12 @@
         gear: {
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
           weapons: [{ id: 'weapon-whip', name: 'Whip', attackAbility: 'DEX', damage: '1d6', damageType: 'Slashing', mastery: 'Slow', location: 'equipped' }],
-          armor: [], inventory: []
+          armor: [{ id: 'armor-leather', name: 'Leather Armor', itemType: 'armor', armorBase: 11, armorDex: 'full', location: 'worn', quantity: 1 }],
+          inventory: [
+            { id: 'item-explorers-pack', name: "Explorer's Pack", itemType: 'container', isContainer: true, location: 'back', quantity: 1 },
+            { id: 'item-thieves-tools', name: "Thieves' Tools", itemType: 'item', location: 'back', containerId: 'item-explorers-pack', quantity: 1 },
+            { id: 'item-navigators-tools', name: "Navigator's Tools", itemType: 'item', location: 'back', containerId: 'item-explorers-pack', quantity: 1 }
+          ]
         },
         origin: {
           species: '',
@@ -71,6 +76,7 @@
           coolUsed: 0, featureUses: {}, relics: [],
           choices: {
             classSkills: [], ancientLanguages: ['', '', ''], vehicles: ['', ''], expertise: '',
+            subclass: '',
             weaponMasteries: ['', ''], feat4: [], feat8: [], feat12: [], feat16: [], epicBoon19: [],
             startingMelee: '', startingRanged: ''
           }
@@ -119,10 +125,34 @@
       item.quantity = Math.max(1, Math.floor(number(item.quantity, 1)));
       item.modifiers = array(item.modifiers).filter(modifier => modifier && typeof modifier === 'object');
       item.isContainer = typeof item.isContainer === 'boolean' ? item.isContainer : /\b(backpack|pack|bag|sack|pouch|chest|case)\b/i.test(item.name);
+      const rawArmor = String(item.raw?.armor_category || '').toLowerCase();
+      const inferredType = item.isContainer ? 'container' : item.raw?.weapon_category || item.raw?.damage?.damage_dice ? 'weapon' : rawArmor === 'shield' ? 'shield' : rawArmor ? 'armor' : 'item';
+      item.itemType = ['item', 'weapon', 'armor', 'shield', 'container'].includes(item.itemType) ? item.itemType : inferredType;
+      if (item.itemType === 'container') item.isContainer = true;
       item.containerId = item.containerId ? String(item.containerId) : '';
+      for (const key of ['acBonus', 'speedBonus', 'initiativeBonus', 'attackBonus', 'damageBonus']) {
+        if (item[key] != null) item[key] = number(item[key], 0);
+      }
+      if (item.armorBase != null && item.armorBase !== '') item.armorBase = Math.max(0, number(item.armorBase, 10));
       if (item.attunement) item.isAttuned = !!item.isAttuned;
       return item;
     });
+  }
+
+  function ensureFixedStartingEquipment(character) {
+    const gear = character.gear;
+    const all = () => [...gear.weapons, ...gear.armor, ...gear.inventory];
+    const findByName = name => all().find(item => String(item.name || '').toLowerCase() === name.toLowerCase());
+    if (!findByName('Whip')) gear.weapons.push({ id: 'weapon-whip', name: 'Whip', itemType: 'weapon', attackAbility: 'DEX', damage: '1d6', damageType: 'Slashing', mastery: 'Slow', location: 'equipped', quantity: 1, modifiers: [], containerId: '' });
+    if (!findByName('Leather Armor')) gear.armor.push({ id: 'armor-leather', name: 'Leather Armor', itemType: 'armor', armorBase: 11, armorDex: 'full', location: 'worn', quantity: 1, modifiers: [], containerId: '' });
+    let pack = findByName("Explorer's Pack") || findByName('Explorer’s Pack');
+    if (!pack) {
+      pack = { id: 'item-explorers-pack', name: "Explorer's Pack", itemType: 'container', isContainer: true, location: 'back', quantity: 1, modifiers: [], containerId: '' };
+      gear.inventory.push(pack);
+    }
+    for (const [id, name] of [['item-thieves-tools', "Thieves' Tools"], ['item-navigators-tools', "Navigator's Tools"]]) {
+      if (!findByName(name)) gear.inventory.push({ id, name, itemType: 'item', location: pack.location || 'back', containerId: pack.isContainer ? pack.id : '', quantity: 1, modifiers: [] });
+    }
   }
 
   function migrateCanonicalChoices(th) {
@@ -142,10 +172,11 @@
     while (choices.ancientLanguages.length < 3) choices.ancientLanguages.push('');
     choices.vehicles = array(choices.vehicles).slice(0, 2);
     while (choices.vehicles.length < 2) choices.vehicles.push('');
-    choices.weaponMasteries = array(choices.weaponMasteries).slice(0, 2);
+    choices.weaponMasteries = unique(choices.weaponMasteries).filter(name => String(name).toLowerCase() !== 'whip').slice(0, 2);
     while (choices.weaponMasteries.length < 2) choices.weaponMasteries.push('');
     for (const key of ['feat4', 'feat8', 'feat12', 'feat16', 'epicBoon19']) choices[key] = array(choices[key]).filter(Boolean).slice(0, 1);
     choices.expertise = String(choices.expertise || '');
+    choices.subclass = String(choices.subclass || '');
     choices.startingMelee = String(choices.startingMelee || '');
     choices.startingRanged = String(choices.startingRanged || '');
   }
@@ -194,6 +225,20 @@
     c.gear.inventory = normalizeItems(c.gear.inventory, 'item');
     c.gear.weapons = normalizeItems(c.gear.weapons, 'weapon');
     c.gear.armor = normalizeItems(c.gear.armor, 'armor');
+    if (sourceSchema < 12) ensureFixedStartingEquipment(c);
+    const allGear = [...c.gear.inventory, ...c.gear.weapons, ...c.gear.armor];
+    const gearById = new Map(allGear.map(item => [item.id, item]));
+    for (const item of allGear) {
+      const parent = gearById.get(item.containerId);
+      if (!parent?.isContainer || parent.id === item.id) { item.containerId = ''; continue; }
+      const visited = new Set([item.id]);
+      let cursor = parent;
+      while (cursor?.containerId && !visited.has(cursor.containerId)) {
+        visited.add(cursor.containerId);
+        cursor = gearById.get(cursor.containerId);
+      }
+      if (cursor?.containerId && visited.has(cursor.containerId)) item.containerId = '';
+    }
     for (const coin of ['gp', 'ep', 'sp', 'cp', 'pp']) c.gear.money[coin] = Math.max(0, Math.floor(number(c.gear.money[coin], 0)));
 
     const validModes = new Set(['normal', 'advantage', 'disadvantage']);
@@ -229,6 +274,7 @@
 
     const th = s.classes.treasureHunter;
     migrateCanonicalChoices(th);
+    if (sourceSchema < 12 && c.level >= 3 && !th.choices.subclass) th.choices.subclass = 'Occult Collector';
     if (sourceSchema < SCHEMA_VERSION && !origin.v9GrantMigration) {
       const generatedSkills = unique([
         ...(th.choices.classSkills || []), ...(origin.speciesChoices.skills || []), ...(background.skills || []),

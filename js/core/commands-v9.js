@@ -6,7 +6,8 @@
   const T = window.TreasureHunterDataV7s;
   const Relics = window.TreasureHunterRelicsV7s || [];
   const Origin = window.CharacterOrigin;
-  if (!S || !D || !T || !Origin) return;
+  const Rules = window.DND2024Rules;
+  if (!S || !D || !T || !Origin || !Rules) return;
 
   const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const clamp = (value, min, max) => Math.max(min, Math.min(max, number(value, min)));
@@ -21,15 +22,16 @@
       const defenses = D.damageDefenses(state);
       let applied = requested;
       const steps = [];
-      if (damageType && defenses.immunities.includes(damageType)) {
+      const hasDefense = list => list.includes(damageType) || list.includes('All');
+      if (damageType && hasDefense(defenses.immunities)) {
         applied = 0;
         steps.push('immunity');
       } else {
-        if (damageType && defenses.resistances.includes(damageType)) {
+        if (damageType && hasDefense(defenses.resistances)) {
           applied = Math.floor(applied / 2);
           steps.push('resistance');
         }
-        if (damageType && defenses.vulnerabilities.includes(damageType)) {
+        if (damageType && hasDefense(defenses.vulnerabilities)) {
           applied *= 2;
           steps.push('vulnerability');
         }
@@ -138,6 +140,7 @@
 
   function addRelic(relicId) {
     const source = S.get();
+    if (!D.subclassName(source)) return { ok: false, reason: 'subclass' };
     const limits = T.relicLimit(D.level(source));
     if (!Relics.some(relic => relic.id === relicId && relic.level <= D.level(source))) return { ok: false, reason: 'unavailable' };
     if (source.classes.treasureHunter.relics.some(relic => relic.relicId === relicId)) return { ok: false, reason: 'duplicate' };
@@ -270,6 +273,52 @@
     }, 'origin:apply');
   }
 
+  function allGearItems(state) {
+    return [...state.character.gear.weapons, ...state.character.gear.armor, ...state.character.gear.inventory];
+  }
+
+  function syncStartingWeapon(state, slot, name, previousName) {
+    const gear = state.character.gear;
+    const marker = `starting-${slot}`;
+    let item = allGearItems(state).find(candidate => candidate.startingChoice === marker);
+    if (!name) {
+      if (item) delete item.startingChoice;
+      return;
+    }
+    if (item && String(previousName || '').toLowerCase() === String(name).toLowerCase()) return;
+    const profile = Rules.startingWeaponProfile(name);
+    if (!profile) return;
+    if (!item) item = allGearItems(state).find(candidate => String(candidate.name || '').toLowerCase() === String(profile.name).toLowerCase());
+    if (!item) {
+      item = { id: S.uid(`weapon-${slot}`), location: 'backpack', quantity: 1, containerId: '', modifiers: [] };
+      gear.weapons.push(item);
+    }
+    const identity = { id: item.id, location: item.location || 'backpack', quantity: Math.max(1, number(item.quantity, 1)), containerId: item.containerId || '', modifiers: Array.isArray(item.modifiers) ? item.modifiers : [] };
+    delete item.raw;
+    Object.assign(item, profile, identity, { source: 'Treasure Hunter starting equipment', startingChoice: marker, masteryWeapon: profile.name });
+  }
+
+  function syncStartingAmmunition(state, weaponName, previousName) {
+    const gear = state.character.gear;
+    let ammunition = gear.inventory.find(item => item.startingChoice === 'starting-ammunition');
+    if (!weaponName) {
+      if (ammunition) delete ammunition.startingChoice;
+      return;
+    }
+    if (ammunition && String(previousName || '').toLowerCase() === String(weaponName).toLowerCase()) return;
+    const profile = Rules.startingWeaponProfile(weaponName);
+    if (!profile?.ammunition) return;
+    const pack = allGearItems(state).find(item => item.isContainer && /explorer['’]s pack/i.test(item.name || ''));
+    if (!ammunition) {
+      ammunition = { id: S.uid('starting-ammo'), itemType: 'item', location: pack?.location || 'backpack', containerId: pack?.id || '', modifiers: [] };
+      gear.inventory.push(ammunition);
+    }
+    Object.assign(ammunition, {
+      name: profile.ammunition, itemType: 'item', quantity: 20, source: 'Treasure Hunter starting equipment',
+      startingChoice: 'starting-ammunition', location: pack?.location || ammunition.location || 'backpack', containerId: pack?.id || ''
+    });
+  }
+
   function saveBuilder(payload) {
     const source = S.get();
     const oldMax = D.hpMax(source);
@@ -283,23 +332,52 @@
       c.race = c.origin.species;
       const speciesDefinition = Origin.SPECIES.find(species => species.name === c.origin.species || species.id === c.origin.species);
       c.size = speciesDefinition?.mechanicsAvailable ? speciesDefinition.size || '' : '';
+      const occupiedProficiencies = new Set();
+      const takeUnique = (values, count) => unique(values).filter(value => {
+        if (occupiedProficiencies.has(value)) return false;
+        occupiedProficiencies.add(value);
+        return true;
+      }).slice(0, count);
       c.origin.speciesChoices = {
-        skills: unique(payload.speciesChoices?.skills).slice(0, 2), simpleWeapon: String(payload.speciesChoices?.simpleWeapon || '')
+        skills: takeUnique(payload.speciesChoices?.skills, 2), simpleWeapon: String(payload.speciesChoices?.simpleWeapon || '')
       };
-      c.origin.background = backgroundPayload(payload.background);
+      const nextBackground = backgroundPayload(payload.background);
+      nextBackground.skills = takeUnique(nextBackground.skills, 2);
+      if (nextBackground.tool) {
+        if (occupiedProficiencies.has(nextBackground.tool)) nextBackground.tool = '';
+        else occupiedProficiencies.add(nextBackground.tool);
+      }
+      if (nextBackground.secondary) {
+        if (occupiedProficiencies.has(nextBackground.secondary)) nextBackground.secondary = '';
+        else occupiedProficiencies.add(nextBackground.secondary);
+      }
+      if (nextBackground.feat === 'Skilled') nextBackground.skilledChoices = takeUnique(nextBackground.skilledChoices, 3);
+      c.origin.background = nextBackground;
       c.bio.background = Origin.BACKGROUND.name;
       const bonuses = Origin.abilityBonuses(state);
       for (const ability of S.A) {
         const resilient = c.origin.background.feat === 'Resilient' && c.origin.background.resilientAbility === ability ? 1 : 0;
         c.abilities[ability] = clamp(number(payload.abilities?.[ability], 10) - number(bonuses[ability]) - resilient, 1, 30);
       }
-      th.choices.classSkills = unique(payload.classSkills).slice(0, 3);
-      th.choices.ancientLanguages = (payload.ancientLanguages || []).slice(0, 3);
-      th.choices.vehicles = (payload.vehicles || []).slice(0, 2);
+      th.choices.classSkills = takeUnique(payload.classSkills, 3);
+      th.choices.ancientLanguages = unique(payload.ancientLanguages).slice(0, 3);
+      th.choices.vehicles = takeUnique(payload.vehicles, 2);
       th.choices.expertise = String(payload.expertise || '');
-      th.choices.weaponMasteries = (payload.weaponMasteries || []).slice(0, 2);
+      th.choices.weaponMasteries = unique(payload.weaponMasteries).filter(name => String(name).toLowerCase() !== 'whip').slice(0, 2);
+      const previousStartingMelee = th.choices.startingMelee;
+      const previousStartingRanged = th.choices.startingRanged;
       th.choices.startingMelee = String(payload.startingMelee || '');
       th.choices.startingRanged = String(payload.startingRanged || '');
+      syncStartingWeapon(state, 'melee', th.choices.startingMelee, previousStartingMelee);
+      syncStartingWeapon(state, 'ranged', th.choices.startingRanged, previousStartingRanged);
+      syncStartingAmmunition(state, th.choices.startingRanged, previousStartingRanged);
+      if (payload.manualSkills && typeof payload.manualSkills === 'object') {
+        for (const skill of Object.keys(D.SKILLS)) delete c.skills[skill];
+        for (const [skill, status] of Object.entries(payload.manualSkills)) {
+          const normalized = clamp(status, 0, 2);
+          if (Object.hasOwn(D.SKILLS, skill) && normalized) c.skills[skill] = normalized;
+        }
+      }
       c.hp.auto = payload.hpAuto !== false;
       if (!c.hp.auto) c.hp.max = Math.max(1, number(payload.hpMax, c.hp.max));
       const nextMax = D.hpMax(state);
@@ -339,14 +417,111 @@
     next.id = S.uid('item');
     next.location = S.ITEM_LOCATIONS.includes(location) ? location : 'backpack';
     next.quantity = Math.max(1, number(next.quantity, 1));
+    next.containerId = '';
     update(state => { state.character.gear.inventory.push(next); }, 'item:add');
     return next.id;
   }
 
+  function findItem(state, id) {
+    const gear = state.character.gear;
+    return [...gear.inventory, ...gear.weapons, ...gear.armor].find(entry => entry.id === id) || null;
+  }
+
+  function syncContainedLocations(state, containerId, location, visited = new Set()) {
+    if (!containerId || visited.has(containerId)) return;
+    visited.add(containerId);
+    const gear = state.character.gear;
+    for (const child of [...gear.inventory, ...gear.weapons, ...gear.armor].filter(item => item.containerId === containerId)) {
+      child.location = location;
+      if (child.isContainer) syncContainedLocations(state, child.id, location, visited);
+    }
+  }
+
+  function validContainerMove(state, itemId, containerId) {
+    const target = findItem(state, containerId);
+    if (!target?.isContainer || target.id === itemId) return false;
+    const visited = new Set([itemId]);
+    let cursor = target;
+    while (cursor?.containerId) {
+      if (visited.has(cursor.containerId)) return false;
+      visited.add(cursor.containerId);
+      cursor = findItem(state, cursor.containerId);
+    }
+    return true;
+  }
+
+  function moveItem(id, destination = {}) {
+    let result = { ok: false, reason: 'missing' };
+    update(state => {
+      const item = findItem(state, id);
+      if (!item) return;
+      const containerId = String(destination.containerId || '');
+      if (containerId) {
+        if (!validContainerMove(state, id, containerId)) { result = { ok: false, reason: 'container' }; return; }
+        const parent = findItem(state, containerId);
+        item.containerId = containerId;
+        item.location = S.ITEM_LOCATIONS.includes(parent.location) ? parent.location : 'backpack';
+      } else {
+        item.containerId = '';
+        if (S.ITEM_LOCATIONS.includes(destination.location)) item.location = destination.location;
+      }
+      if (item.isContainer) syncContainedLocations(state, item.id, item.location);
+      result = { ok: true, location: item.location, containerId: item.containerId };
+    }, 'item:move');
+    return result;
+  }
+
+  function setItemEquipped(id, equipped) {
+    let result = { ok: false, reason: 'missing' };
+    update(state => {
+      const item = findItem(state, id);
+      if (!item) return;
+      if (equipped) {
+        if (item.isContainer) { result = { ok: false, reason: 'container' }; return; }
+        if (!['equipped', 'worn'].includes(item.location) || item.containerId) {
+          item.stowedLocation = item.location || 'backpack';
+          item.stowedContainerId = item.containerId || '';
+        }
+        item.containerId = '';
+        item.location = D.isArmor(item) && !D.isShield(item) ? 'worn' : 'equipped';
+      } else {
+        const storedContainer = findItem(state, item.stowedContainerId);
+        if (storedContainer?.isContainer && validContainerMove(state, item.id, storedContainer.id)) {
+          item.containerId = storedContainer.id;
+          item.location = storedContainer.location;
+        } else {
+          const fallback = S.ITEM_LOCATIONS.includes(item.stowedLocation) && !['equipped', 'worn'].includes(item.stowedLocation) ? item.stowedLocation : 'backpack';
+          item.location = fallback;
+          item.containerId = '';
+        }
+      }
+      result = { ok: true, equipped: !!equipped, location: item.location };
+    }, equipped ? 'item:equip' : 'item:unequip');
+    return result;
+  }
+
   function updateItem(id, changes) {
     update(state => {
-      const item = state.character.gear.inventory.find(entry => entry.id === id) || state.character.gear.weapons.find(entry => entry.id === id) || state.character.gear.armor.find(entry => entry.id === id);
-      if (item) Object.assign(item, S.clone(changes || {}));
+      const item = findItem(state, id);
+      if (!item) return;
+      const next = S.clone(changes || {});
+      if (next.name != null) next.name = String(next.name || 'Item').trim() || 'Item';
+      if (next.quantity != null) next.quantity = Math.max(1, Math.floor(number(next.quantity, 1)));
+      if (next.location != null && !S.ITEM_LOCATIONS.includes(next.location)) delete next.location;
+      if (next.containerId != null) {
+        next.containerId = String(next.containerId || '');
+        if (next.containerId && !validContainerMove(state, id, next.containerId)) delete next.containerId;
+      }
+      Object.assign(item, next);
+      if (item.containerId) {
+        const parent = findItem(state, item.containerId);
+        if (parent) item.location = parent.location;
+      }
+      if (!item.isContainer) {
+        for (const child of [...state.character.gear.inventory, ...state.character.gear.weapons, ...state.character.gear.armor]) {
+          if (child.containerId === item.id) child.containerId = '';
+        }
+      }
     }, 'item:update');
   }
 
@@ -356,7 +531,13 @@
       gear.inventory = gear.inventory.filter(item => item.id !== id);
       gear.weapons = gear.weapons.filter(item => item.id !== id);
       gear.armor = gear.armor.filter(item => item.id !== id);
-      for (const item of [...gear.inventory, ...gear.weapons, ...gear.armor]) if (item.containerId === id) item.containerId = '';
+      for (const item of [...gear.inventory, ...gear.weapons, ...gear.armor]) {
+        if (item.containerId === id) {
+          item.containerId = '';
+          item.location = 'backpack';
+          if (item.isContainer) syncContainedLocations(state, item.id, item.location);
+        }
+      }
     }, 'item:remove');
   }
 
@@ -364,6 +545,19 @@
     update(state => {
       for (const coin of ['gp', 'ep', 'sp', 'cp']) state.character.gear.money[coin] = Math.max(0, Math.floor(number(values[coin])));
     }, 'money:set');
+  }
+
+  function adjustMoney(values) {
+    const applied = {};
+    update(state => {
+      for (const coin of ['gp', 'ep', 'sp', 'cp']) {
+        const before = Math.max(0, Math.floor(number(state.character.gear.money[coin])));
+        const after = Math.max(0, before + Math.trunc(number(values?.[coin])));
+        state.character.gear.money[coin] = after;
+        applied[coin] = after - before;
+      }
+    }, 'money:adjust');
+    return applied;
   }
 
   function addCustomAction(payload) {
@@ -430,7 +624,7 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, removeItem, setMoney, addCustomAction, removeCustomAction,
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, setMoney, adjustMoney, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
   };
 })();

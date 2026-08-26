@@ -1,7 +1,7 @@
-name: Validate V9 stabilization
+name: Validate V9
 on:
   push:
-    branches: [main, v9-stabilization]
+    branches: [main, 'v9-*']
   pull_request:
     branches: [main]
 
@@ -43,5 +43,5 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v9-stabilization-3' service-worker.js
-          grep -q "service-worker.js?v=9.0.2" index.html
+          grep -q 'character-sheet-v9-ux-4' service-worker.js
+          grep -q "service-worker.js?v=9.1.0" index.html

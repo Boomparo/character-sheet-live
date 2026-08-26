@@ -11,14 +11,18 @@
     'Quarterstaff', 'Sickle', 'Spear', 'Dart', 'Light Crossbow', 'Shortbow', 'Sling'
   ];
   const VEHICLES = ['Land Vehicles', 'Water Vehicles', 'Train', 'Automobile', 'Motorcycle', 'Aircraft'];
+  const GAMING_SETS = ['Dice Set', 'Dragonchess Set', 'Playing Card Set', 'Three-Dragon Ante Set'];
+  const MUSICAL_INSTRUMENTS = ['Bagpipes', 'Drum', 'Dulcimer', 'Flute', 'Horn', 'Lute', 'Lyre', 'Pan Flute', 'Shawm', 'Viol'];
   const TOOLS = [
     "Thieves' Tools", "Navigator's Tools", "Alchemist's Supplies", "Brewer's Supplies",
     "Calligrapher's Supplies", "Carpenter's Tools", "Cartographer's Tools", "Cobbler's Tools",
-    "Cook's Utensils", "Disguise Kit", "Forgery Kit", "Gaming Set", "Herbalism Kit",
-    "Jeweler's Tools", "Leatherworker's Tools", "Mason's Tools", "Musical Instrument",
+    "Cook's Utensils", "Disguise Kit", "Forgery Kit", "Herbalism Kit",
+    "Jeweler's Tools", "Leatherworker's Tools", "Mason's Tools",
     "Painter's Supplies", "Poisoner's Kit", "Potter's Tools", "Smith's Tools",
     "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"
   ];
+  const SECONDARY_PROFICIENCIES = [...MUSICAL_INSTRUMENTS, ...GAMING_SETS, ...VEHICLES];
+  const PROFICIENCY_CHOICES = [...SKILLS, ...TOOLS, ...SECONDARY_PROFICIENCIES];
 
   const SPECIES = [
     {
@@ -107,8 +111,32 @@
     return species(state)?.traits || [];
   }
 
+  function featureRecords(state) {
+    const selectedSpecies = species(state);
+    const selectedBackground = background(state);
+    const records = [];
+    if (selectedSpecies?.mechanicsAvailable) {
+      (selectedSpecies.traits || []).forEach(([name, summary], index) => records.push({
+        id: `origin-species-${selectedSpecies.id}-${index + 1}`,
+        name, summary, fullText: summary, source: selectedSpecies.name,
+        level: 1, action: 'Passive', kind: 'origin'
+      }));
+    }
+    const featName = String(selectedBackground.feat || '');
+    const feat = BACKGROUND.feats[featName];
+    if (feat) records.push({
+      id: `origin-background-${featName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name: featName, summary: feat.description, fullText: feat.description,
+      source: BACKGROUND.name, level: 1,
+      action: ['Lucky'].includes(featName) ? 'Resource' : ['Healer'].includes(featName) ? 'Action' : 'Passive',
+      kind: 'origin'
+    });
+    return records;
+  }
+
   window.CharacterOrigin = {
-    SKILLS, SIMPLE_WEAPONS, VEHICLES, TOOLS, SPECIES, BACKGROUND,
-    species, background, backgroundFeat, abilityBonuses, originIncomplete, speciesTraits
+    SKILLS, SIMPLE_WEAPONS, VEHICLES, GAMING_SETS, MUSICAL_INSTRUMENTS,
+    TOOLS, SECONDARY_PROFICIENCIES, PROFICIENCY_CHOICES, SPECIES, BACKGROUND,
+    species, background, backgroundFeat, abilityBonuses, originIncomplete, speciesTraits, featureRecords
   };
 })();
