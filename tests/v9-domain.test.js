@@ -46,7 +46,7 @@ const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 
-assert.equal(S.APP_VERSION, '9.3.0-expedition-ux');
+assert.equal(S.APP_VERSION, '9.3.1-expedition-ux');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -472,7 +472,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
-  assert.match(index, /service-worker\.js\?v=9\.3\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.3\.1/);
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
   assert.match(index, /id="builderBtn"/);
@@ -507,6 +507,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.npc-card-main/);
   assert.match(v9Css, /scrollbar-width:none/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-7/);
-  assert.match(worker, /app-v9\.js\?v=9\.3\.0/);
+  assert.match(worker, /character-sheet-v9-ux-8/);
+  assert.match(worker, /app-v9\.js\?v=9\.3\.1/);
 });
