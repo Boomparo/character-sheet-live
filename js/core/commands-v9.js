@@ -126,7 +126,7 @@
           if (feature && (long || feature.recovery === 'SR')) th.featureUses[id] = 0;
         }
       }
-      if (config.relics) {
+      if (config.relics && D.subclassHasSystem('relics', state)) {
         for (const entry of th.relics || []) {
           const relic = Relics.find(item => item.id === entry.relicId);
           if (relic && (long || relic.recovery === 'SR')) entry.used = 0;
@@ -174,7 +174,7 @@
 
   function addRelic(relicId) {
     const source = S.get();
-    if (!D.subclassName(source)) return { ok: false, reason: 'subclass' };
+    if (!D.subclassHasSystem('relics', source)) return { ok: false, reason: 'subclass' };
     const limits = T.relicLimit(D.level(source));
     if (!Relics.some(relic => relic.id === relicId && relic.level <= D.level(source))) return { ok: false, reason: 'unavailable' };
     if (source.classes.treasureHunter.relics.some(relic => relic.relicId === relicId)) return { ok: false, reason: 'duplicate' };
@@ -191,6 +191,7 @@
 
   function toggleRelicPrepared(instanceId) {
     const source = S.get();
+    if (!D.subclassHasSystem('relics', source)) return { ok: false, reason: 'subclass' };
     const current = source.classes.treasureHunter.relics.find(relic => relic.instanceId === instanceId);
     if (!current) return { ok: false, reason: 'missing' };
     const next = !current.prepared;
@@ -225,7 +226,10 @@
   function setChoice(key, value, index = null) {
     update(state => {
       const choices = state.classes.treasureHunter.choices;
-      if (index == null) choices[key] = value;
+      if (key === 'subclass') {
+        choices.subclass = String(value || '');
+        choices.subclassConfirmed = !!choices.subclass;
+      } else if (index == null) choices[key] = value;
       else {
         if (!Array.isArray(choices[key])) choices[key] = [];
         choices[key][index] = value;
@@ -492,6 +496,7 @@
       const next = S.clone(changes || {});
       if (next.name != null) next.name = String(next.name || 'Item').trim() || 'Item';
       if (next.quantity != null) next.quantity = Math.max(1, Math.floor(number(next.quantity, 1)));
+      if (next.weight != null) next.weight = Math.max(0, number(next.weight, 0));
       if (next.location != null && !S.ITEM_LOCATIONS.includes(next.location)) delete next.location;
       if (next.containerId != null) {
         next.containerId = String(next.containerId || '');
@@ -524,6 +529,12 @@
         }
       }
     }, 'item:remove');
+  }
+
+  function setEncumbranceMode(mode) {
+    if (!['basic', 'balanced', 'variant'].includes(mode)) return false;
+    update(state => { state.character.gear.encumbranceMode = mode; }, 'gear:encumbrance');
+    return true;
   }
 
   function startingGearStatus(value = S.get()) {
@@ -681,14 +692,23 @@
     update(state => { for (const [key, value] of Object.entries(values || {})) state.character.bio[key] = String(value || '').trim(); }, 'bio:save');
   }
 
-  function setUi(key, value) { update(state => { state.ui[key] = value; }, `ui:${key}`); }
+  function setUi(key, value) {
+    update(state => {
+      state.ui[key] = value;
+      if (key === 'pageId') {
+        const pages = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
+        const index = pages.indexOf(value);
+        if (index >= 0) state.ui.page = index;
+      }
+    }, `ui:${key}`);
+  }
 
   window.CharacterCommands = {
     applyDamage, heal, setTempHp, setHpCurrent, reconcileDerived, toggleInspiration, spendCool, adjustCool, adjustLuck, rest,
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, moveItem, setItemEquipped, removeItem, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
     setMoney, adjustMoney, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
   };

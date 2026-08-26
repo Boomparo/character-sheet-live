@@ -46,7 +46,7 @@ const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 
-assert.equal(S.APP_VERSION, '9.3.1-expedition-ux');
+assert.equal(S.APP_VERSION, '9.4.0-subclass-encumbrance');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -59,13 +59,14 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 13);
+  assert.equal(state.schemaVersion, 14);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
   assert.deepEqual(state.classes.treasureHunter.choices.ancientLanguages, ['Latina', 'Kečuánština', '']);
   assert.equal(state.classes.treasureHunter.choices.expertise, 'Stealth');
-  assert.equal(state.classes.treasureHunter.choices.subclass, 'Occult Collector');
+  assert.equal(state.classes.treasureHunter.choices.subclass, '', 'legacy level does not silently select a subclass');
+  assert.equal(state.classes.treasureHunter.choices.subclassConfirmed, false);
   assert.equal(Object.hasOwn(state.classes.treasureHunter, 'ancientLanguages'), false);
   assert.deepEqual(state.classes.treasureHunter.choices.weaponMasteries.filter(Boolean), ['Dagger'], 'redundant Whip selection migrates away because Mistr biče already grants Slow');
   assert.equal(state.classes.treasureHunter.relics[0].relicId, 'healing-amulet');
@@ -136,7 +137,7 @@ test('automatic AC has one calculation for armor, shield and Defence', () => {
   assert.ok(parts.some(label => label.startsWith('Defence ·')));
 });
 
-test('subclass identity starts at level 3 and Whip mastery is automatic', () => {
+test('subclass identity requires an explicit choice and the registry accepts future subclasses', () => {
   fresh(state => {
     state.character.level = 1;
     state.classes.treasureHunter.choices.weaponMasteries = ['Dagger', 'Shortbow'];
@@ -152,6 +153,13 @@ test('subclass identity starts at level 3 and Whip mastery is automatic', () => 
   assert.equal(C.addRelic('healing-amulet').reason, 'subclass');
   C.setChoice('subclass', 'Occult Collector');
   assert.equal(D.subclassName(), 'Occult Collector');
+  assert.equal(S.get().classes.treasureHunter.choices.subclassConfirmed, true);
+  assert.equal(D.subclassHasSystem('relics'), true);
+  T.registerSubclass({ id: 'field-agent', name: 'Field Agent', minLevel: 3, systems: [] });
+  C.setChoice('subclass', 'Field Agent');
+  assert.equal(D.subclassName(), 'Field Agent');
+  assert.equal(D.subclassHasSystem('relics'), false);
+  assert.equal(C.addRelic('healing-amulet').reason, 'subclass');
 });
 
 test('2024 weapon masteries project into sourced Skills and attack records', () => {
@@ -200,7 +208,8 @@ test('forced roll modes are indicators backed by locked domain state', () => {
 });
 
 test('relic charges have one shared resource entry', () => {
-  fresh(state => { state.character.level = 3; state.classes.treasureHunter.choices.subclass = 'Occult Collector'; });
+  fresh(state => { state.character.level = 3; });
+  C.setChoice('subclass', 'Occult Collector');
   assert.equal(C.addRelic('healing-amulet').ok, true);
   const entry = S.get().classes.treasureHunter.relics[0];
   assert.equal(C.toggleRelicPrepared(entry.instanceId).ok, true);
@@ -370,6 +379,38 @@ test('Backpack is a canonical container and nested containers reject cycles', ()
   assert.equal(S.ITEM_LOCATIONS.includes('backpack'), false, 'Backpack is never a pseudo-location');
 });
 
+test('weight, three encumbrance modes and Push Drag Lift use one canonical calculation', () => {
+  fresh(state => {
+    state.character.abilities.STR = 10;
+    state.character.speed = 30;
+    state.character.gear.inventory.push(
+      { id: 'bag', name: 'Backpack', itemType: 'container', isContainer: true, location: 'back', quantity: 1, weight: 5 },
+      { id: 'rope', name: 'Heavy Rope', location: 'back', containerId: 'bag', quantity: 1, weight: 55 },
+      { id: 'vault', name: 'Stored Statue', location: 'storage', quantity: 1, weight: 100 },
+      { id: 'mystery', name: 'Unknown Relic', location: 'carried', quantity: 1 }
+    );
+  });
+  assert.equal(D.carriedWeight().total, 60, 'container and contents both count, storage does not');
+  assert.equal(D.carriedWeight().unknown, 1);
+  assert.equal(D.encumbrance().limit, 150);
+  assert.equal(D.encumbrance().pushDragLift, 300);
+
+  assert.equal(C.setEncumbranceMode('balanced'), true);
+  assert.equal(D.encumbrance().limit, 100);
+  assert.equal(D.encumbrance().status, 'normal');
+
+  C.setEncumbranceMode('variant');
+  assert.equal(D.encumbrance().status, 'encumbered');
+  assert.equal(D.speed(), 20);
+  C.addItem({ name: 'Load', quantity: 1, weight: 50 }, 'carried');
+  assert.equal(D.encumbrance().status, 'heavy');
+  assert.equal(D.speed(), 10);
+  assert.equal(D.effectiveRollMode('skill', 'Athletics').mode, 'disadvantage');
+  assert.equal(D.effectiveRollMode('save', 'CON').mode, 'disadvantage');
+  assert.equal(D.effectiveRollMode('attack', 'DEX').mode, 'disadvantage');
+  assert.equal(D.effectiveRollMode('skill', 'Arcana').mode, 'normal');
+});
+
 test('money adjustments add, remove and clamp at zero', () => {
   fresh(state => { state.character.gear.money = { gp: 10, ep: 2, sp: 0, cp: 1, pp: 0 }; });
   const applied = C.adjustMoney({ pp: 2, gp: 5, ep: -9, sp: 3, cp: -1 });
@@ -410,6 +451,10 @@ test('catalog exposes official prices, containers, tags and Luky firearm variant
   assert.equal(Catalog.priceLabel(byName("Explorer's Pack")), '10 GP');
   assert.equal(byName('Backpack').isContainer, true);
   assert.equal(Catalog.costInCp(byName('Firearm Bullets (10)')), 300);
+  const arrows = Catalog.cloneForInventory(byName('Arrows (20)'));
+  assert.equal(arrows.quantity, 1);
+  assert.equal(arrows.bundleSize, 20);
+  assert.equal(D.itemStackWeight(arrows), 1, 'a bundle weight is not multiplied by its ammunition count');
   assert.ok(byName('Rapier').tags.includes('finesse'));
   assert.ok(byName('Longbow').tags.includes('martial'));
   assert.ok(byName('Longbow').tags.includes('ranged'));
@@ -472,15 +517,16 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
-  assert.match(index, /service-worker\.js\?v=9\.3\.1/);
+  assert.match(index, /service-worker\.js\?v=9\.4\.0/);
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
   assert.match(index, /id="builderBtn"/);
   assert.match(index, /class="icon-btn builder-anvil"/);
   assert.equal(index.includes('id="editBtn"'), false, 'top bar has one canonical Builder entry point');
   assert.match(app, /\['pp', 'PP', 'P'\], \['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
-  assert.match(app, /'npcsPage', 'bioPage'/);
-  assert.equal(app.includes('data-action-filter'), false, 'Actions has no persistent horizontal filter rail');
+  assert.match(app, /\['relicsPage', 'RELICS', 'relics'\]/, 'Relics declares its subclass system dependency');
+  assert.match(app, /function visiblePages/);
+  assert.equal(app.includes('data-action-filter'), true, 'Actions exposes compact type filters');
   const npcRenderer = app.slice(app.indexOf('function renderNpcs()'), app.indexOf('function renderAll()'));
   assert.equal(npcRenderer.includes('npcDeleteBtn'), false, 'NPC list renderer must not expose deletion');
   const css = fs.readFileSync(path.join(root, 'css/v7s.css'), 'utf8');
@@ -506,7 +552,9 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.hp-wheel-marker/);
   assert.match(v9Css, /\.npc-card-main/);
   assert.match(v9Css, /scrollbar-width:none/);
+  assert.match(v9Css, /\.action-filter-bar\{display:flex;flex-wrap:wrap/);
+  assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-8/);
-  assert.match(worker, /app-v9\.js\?v=9\.3\.1/);
+  assert.match(worker, /character-sheet-v9-ux-9/);
+  assert.match(worker, /app-v9\.js\?v=9\.4\.0/);
 });

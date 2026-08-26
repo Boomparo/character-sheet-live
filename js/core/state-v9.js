@@ -3,10 +3,11 @@
 
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 13;
-  const APP_VERSION = '9.3.1-expedition-ux';
+  const SCHEMA_VERSION = 14;
+  const APP_VERSION = '9.4.0-subclass-encumbrance';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
+  const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
   const CHOICE_ARRAYS = [
     'classSkills', 'ancientLanguages', 'vehicles', 'weaponMasteries',
     'feat4', 'feat8', 'feat12', 'feat16', 'epicBoon19'
@@ -51,6 +52,7 @@
         gear: {
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
           weapons: [], armor: [], inventory: [],
+          encumbranceMode: 'basic',
           starting: { budgetGp: 0, finalized: false, remainderCp: 0, legacy: false }
         },
         origin: {
@@ -71,7 +73,7 @@
           coolUsed: 0, featureUses: {}, relics: [],
           choices: {
             classSkills: [], ancientLanguages: ['', '', ''], vehicles: ['', ''], expertise: '',
-            subclass: '',
+            subclass: '', subclassConfirmed: false,
             weaponMasteries: ['', ''], feat4: [], feat8: [], feat12: [], feat16: [], epicBoon19: [],
             startingMelee: '', startingRanged: ''
           }
@@ -80,7 +82,7 @@
       },
       campaign: { npcs: [], notes: [], tarot: {} },
       ui: {
-        page: 0, socialTab: 'npcs', featureView: 'available', featureFilter: 'all', actionFilter: 'all',
+        page: 0, pageId: 'characterPage', socialTab: 'npcs', featureView: 'available', featureFilter: 'all', actionFilter: 'all',
         npcSort: 'alphabetical',
         favoriteFeatures: [], favoriteActions: [], openFeatures: [], openActions: [], openRelics: [], openItems: []
       }
@@ -118,6 +120,8 @@
       item.name = String(item.name || 'Item');
       item.location = [...ITEM_LOCATIONS, 'backpack'].includes(item.location) ? item.location : (item.equipped || item.isEquipped ? 'equipped' : item.worn || item.isWorn ? 'worn' : 'carried');
       item.quantity = Math.max(1, Math.floor(number(item.quantity, 1)));
+      const weight = item.weight ?? item.raw?.weight;
+      if (weight != null && weight !== '' && Number.isFinite(Number(weight))) item.weight = Math.max(0, number(weight));
       item.modifiers = array(item.modifiers).filter(modifier => modifier && typeof modifier === 'object');
       const canonicalPack = /^(backpack|explorer['’]s pack)$/i.test(item.name.trim());
       item.isContainer = canonicalPack || (typeof item.isContainer === 'boolean' ? item.isContainer : /\b(backpack|pack|bag|sack|pouch|chest|case)\b/i.test(item.name));
@@ -179,12 +183,14 @@
     for (const key of ['feat4', 'feat8', 'feat12', 'feat16', 'epicBoon19']) choices[key] = array(choices[key]).filter(Boolean).slice(0, 1);
     choices.expertise = String(choices.expertise || '');
     choices.subclass = String(choices.subclass || '');
+    choices.subclassConfirmed = !!choices.subclassConfirmed;
     choices.startingMelee = String(choices.startingMelee || '');
     choices.startingRanged = String(choices.startingRanged || '');
   }
 
   function normalize(state, options = {}) {
     const sourceSchema = number(state && state.schemaVersion, 0);
+    const sourcePageId = state?.ui?.pageId;
     const s = merge(baseState(), state || {});
     s.schemaVersion = SCHEMA_VERSION;
     s.appVersion = APP_VERSION;
@@ -230,6 +236,15 @@
     c.gear.armor = normalizeItems(c.gear.armor, 'armor', gearIds);
     migrateLegacyBackpack(c);
     const allGear = [...c.gear.inventory, ...c.gear.weapons, ...c.gear.armor];
+    if (sourceSchema < 14) {
+      for (const item of allGear) {
+        const ammunition = (item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`);
+        if (!ammunition || item.quantity <= 1 || item.bundleSize) continue;
+        item.bundleSize = item.quantity;
+        item.quantity = 1;
+        if (!new RegExp(`\\(${item.bundleSize}\\)`).test(item.name)) item.name = `${item.name} (${item.bundleSize})`;
+      }
+    }
     const gearById = new Map(allGear.map(item => [item.id, item]));
     for (const item of allGear) {
       const parent = gearById.get(item.containerId);
@@ -243,6 +258,7 @@
       if (cursor?.containerId && visited.has(cursor.containerId)) item.containerId = '';
     }
     for (const coin of ['gp', 'ep', 'sp', 'cp', 'pp']) c.gear.money[coin] = Math.max(0, Math.floor(number(c.gear.money[coin], 0)));
+    c.gear.encumbranceMode = ['basic', 'balanced', 'variant'].includes(c.gear.encumbranceMode) ? c.gear.encumbranceMode : 'basic';
     c.gear.starting = c.gear.starting && typeof c.gear.starting === 'object' ? c.gear.starting : {};
     c.gear.starting.budgetGp = Math.max(0, Math.floor(number(c.gear.starting.budgetGp, 0)));
     c.gear.starting.finalized = !!c.gear.starting.finalized;
@@ -286,7 +302,10 @@
 
     const th = s.classes.treasureHunter;
     migrateCanonicalChoices(th);
-    if (sourceSchema < 12 && c.level >= 3 && !th.choices.subclass) th.choices.subclass = 'Occult Collector';
+    if (sourceSchema < 14) {
+      th.choices.subclass = '';
+      th.choices.subclassConfirmed = false;
+    }
     if (sourceSchema < SCHEMA_VERSION && !origin.v9GrantMigration) {
       const generatedSkills = unique([
         ...(th.choices.classSkills || []), ...(origin.speciesChoices.skills || []), ...(background.skills || []),
@@ -347,6 +366,8 @@
     ui.featureView = ui.featureView === 'progression' ? 'progression' : 'available';
     ui.featureFilter = ['all', 'active', 'passive', 'subclass'].includes(ui.featureFilter) ? ui.featureFilter : 'all';
     ui.actionFilter = ['all', 'attack', 'action', 'bonus', 'reaction', 'other'].includes(ui.actionFilter) ? ui.actionFilter : 'all';
+    ui.pageId = PAGE_IDS.includes(sourcePageId) ? sourcePageId : PAGE_IDS[ui.page];
+    ui.page = PAGE_IDS.indexOf(ui.pageId);
     for (const key of ['favoriteFeatures', 'favoriteActions', 'openFeatures', 'openActions', 'openRelics', 'openItems']) ui[key] = unique(ui[key]);
     return s;
   }

@@ -37,10 +37,18 @@
   const signed = value => number(value) >= 0 ? `+${number(value)}` : String(number(value));
   const level = value => Math.max(1, Math.min(20, number(state(value).character.level, 1)));
   const pb = value => T.pb(level(value));
-  const subclassName = value => {
+  const subclassDefinition = value => {
     const source = state(value);
-    return level(source) >= 3 && source.classes?.treasureHunter?.choices?.subclass === 'Occult Collector' ? 'Occult Collector' : '';
+    const choices = source.classes?.treasureHunter?.choices || {};
+    if (!choices.subclassConfirmed) return null;
+    const selected = String(choices.subclass || '');
+    const definition = (T.subclassDefinitions || []).find(entry => [entry.id, entry.name, entry.choiceValue].includes(selected));
+    return definition && level(source) >= definition.minLevel ? definition : null;
   };
+  const subclassName = value => subclassDefinition(value)?.name || '';
+  const subclassHasSystem = (system, value) => !!subclassDefinition(value)?.systems?.includes(system);
+  const featureSubclassDefinition = feature => feature?.kind === 'subclass' ? (T.subclassDefinitions || []).find(entry => entry.id === feature.subclassId) || null : null;
+  const featureMatchesSubclass = (feature, value) => feature?.kind !== 'subclass' || featureSubclassDefinition(feature)?.id === subclassDefinition(value)?.id;
 
   function ability(abilityKey, value) {
     const source = state(value);
@@ -71,10 +79,68 @@
     return inventory(value).filter(isItemActive);
   }
 
+  function itemStackWeight(item) {
+    const unit = item?.weight ?? item?.raw?.weight;
+    if (unit == null || unit === '' || !Number.isFinite(Number(unit))) return null;
+    return Math.round(Math.max(0, number(unit)) * Math.max(1, number(item.quantity, 1)) * 100) / 100;
+  }
+
+  function effectiveItemLocation(item, value) {
+    const byId = new Map(inventory(value).map(entry => [entry.id, entry]));
+    const visited = new Set([item?.id]);
+    let cursor = item;
+    while (cursor?.containerId && !visited.has(cursor.containerId)) {
+      visited.add(cursor.containerId);
+      cursor = byId.get(cursor.containerId) || cursor;
+      if (!cursor.containerId) break;
+    }
+    return cursor?.location || item?.location || 'carried';
+  }
+
+  function sizeCarryMultiplier(value) {
+    const source = state(value);
+    const size = String(source.character.size || Origin.species(source)?.size || 'Medium').toLowerCase();
+    return { tiny: 0.5, small: 1, medium: 1, large: 2, huge: 4, gargantuan: 8 }[size] || 1;
+  }
+
+  function carriedWeight(value) {
+    const source = state(value);
+    let total = 0, unknown = 0;
+    for (const item of inventory(source)) {
+      if (['ground', 'storage'].includes(effectiveItemLocation(item, source))) continue;
+      const weight = itemStackWeight(item);
+      if (weight == null) unknown += 1; else total += weight;
+    }
+    return { total: Math.round(total * 100) / 100, unknown };
+  }
+
+  function encumbrance(value) {
+    const source = state(value);
+    const strength = ability('STR', source);
+    const sizeMultiplier = sizeCarryMultiplier(source);
+    const mode = ['basic', 'balanced', 'variant'].includes(source.character.gear?.encumbranceMode) ? source.character.gear.encumbranceMode : 'basic';
+    const load = carriedWeight(source);
+    const standardLimit = strength * 15 * sizeMultiplier;
+    const balancedLimit = strength * 10 * sizeMultiplier;
+    const lightLimit = strength * 5 * sizeMultiplier;
+    const heavyLimit = strength * 10 * sizeMultiplier;
+    const limit = mode === 'balanced' ? balancedLimit : standardLimit;
+    let status = 'normal', statusLabel = 'Within capacity', speedPenalty = 0;
+    if (load.total > limit) { status = 'over'; statusLabel = 'Over carrying capacity'; speedPenalty = mode === 'variant' ? 20 : 0; }
+    else if (mode === 'variant' && load.total > heavyLimit) { status = 'heavy'; statusLabel = 'Heavily encumbered'; speedPenalty = 20; }
+    else if (mode === 'variant' && load.total > lightLimit) { status = 'encumbered'; statusLabel = 'Encumbered'; speedPenalty = 10; }
+    return {
+      mode, modeLabel: mode === 'variant' ? 'Variant Encumbrance' : mode === 'balanced' ? 'Expedition · STR ×10' : 'Basic · STR ×15',
+      strength, sizeMultiplier, weight: load.total, unknownWeights: load.unknown, limit,
+      standardLimit, lightLimit, heavyLimit, pushDragLift: strength * 30 * sizeMultiplier,
+      status, statusLabel, speedPenalty
+    };
+  }
+
   function relicState(value) { return state(value).classes?.treasureHunter?.relics || []; }
   function relicDefinition(id) { return Relics.find(relic => relic.id === id) || null; }
   function activeRelics(value) {
-    if (!subclassName(value)) return [];
+    if (!subclassHasSystem('relics', value)) return [];
     return relicState(value).filter(entry => entry?.prepared).map(entry => ({ ...(relicDefinition(entry.relicId) || {}), ...entry })).filter(entry => entry.id || entry.relicId);
   }
 
@@ -265,7 +331,7 @@
   function speed(value) {
     const source = state(value);
     if (exhaustion(source) >= 6 || Rules.speedIsZero(conditions(source))) return 0;
-    return Math.max(0, baseSpeed(source) + itemSpeedBonus(source) + relicSpeedBonus(source) - Rules.exhaustionSpeedPenalty(exhaustion(source)));
+    return Math.max(0, baseSpeed(source) + itemSpeedBonus(source) + relicSpeedBonus(source) - Rules.exhaustionSpeedPenalty(exhaustion(source)) - encumbrance(source).speedPenalty);
   }
 
   function speedBreakdown(value) {
@@ -274,6 +340,7 @@
     const itemBonus = itemSpeedBonus(source); if (itemBonus) parts.push(['Equipped items', `${signed(itemBonus)} ft.`]);
     const relicBonus = relicSpeedBonus(source); if (relicBonus) parts.push(['Prepared relics', `${signed(relicBonus)} ft.`]);
     const penalty = Rules.exhaustionSpeedPenalty(exhaustion(source)); if (penalty) parts.push(['Exhaustion', `−${penalty} ft.`]);
+    const loadPenalty = encumbrance(source).speedPenalty; if (loadPenalty) parts.push(['Encumbrance', `−${loadPenalty} ft.`]);
     if (Rules.speedIsZero(conditions(source))) parts.push(['Condition', 'Speed is fixed at 0']);
     return { value: speed(source), parts };
   }
@@ -351,17 +418,40 @@
       ? { mode: 'advantage', locked: true, sources: ['Tiché kapesní hodinky'] }
       : { mode: 'normal', locked: false, sources: [] };
   }
-  function fixedSave(abilityKey, value) { return Rules.fixedSaveMode(conditions(state(value)), abilityKey); }
-  function fixedSkill(value) { return Rules.fixedSkillMode(conditions(state(value))); }
+  function addForcedDisadvantage(result, sourceLabel) {
+    if (result.locked && result.mode === 'normal') return result;
+    if (result.mode === 'advantage') return { mode: 'normal', locked: true, sources: [...(result.sources || []), sourceLabel] };
+    return { mode: 'disadvantage', locked: true, sources: [...(result.sources || []), sourceLabel] };
+  }
 
-  function fixedAttack(value) {
+  function heavyEncumbranceAffects(abilityKey, value) {
+    const load = encumbrance(value);
+    return ['STR', 'DEX', 'CON'].includes(abilityKey) && load.mode === 'variant' && ['heavy', 'over'].includes(load.status);
+  }
+
+  function fixedSave(abilityKey, value) {
+    const source = state(value);
+    const fixed = Rules.fixedSaveMode(conditions(source), abilityKey);
+    return heavyEncumbranceAffects(abilityKey, source) ? addForcedDisadvantage(fixed, 'Heavy Encumbrance') : fixed;
+  }
+  function fixedSkill(skillName, value) {
+    if (skillName && typeof skillName === 'object') { value = skillName; skillName = ''; }
+    const source = state(value);
+    const fixed = Rules.fixedSkillMode(conditions(source));
+    return heavyEncumbranceAffects(SKILLS[skillName], source) ? addForcedDisadvantage(fixed, 'Heavy Encumbrance') : fixed;
+  }
+
+  function fixedAttack(abilityKey, value) {
+    if (abilityKey && typeof abilityKey === 'object') { value = abilityKey; abilityKey = ''; }
     const source = state(value);
     const disadvantage = Rules.attackDisadvantage(conditions(source));
     const advantage = conditions(source).includes('Invisible') ? ['Invisible'] : [];
-    if (advantage.length && disadvantage.length) return { mode: 'normal', locked: true, sources: [...advantage, ...disadvantage] };
-    if (disadvantage.length) return { mode: 'disadvantage', locked: true, sources: disadvantage };
-    if (advantage.length) return { mode: 'advantage', locked: true, sources: advantage };
-    return { mode: 'normal', locked: false, sources: [] };
+    let fixed;
+    if (advantage.length && disadvantage.length) fixed = { mode: 'normal', locked: true, sources: [...advantage, ...disadvantage] };
+    else if (disadvantage.length) fixed = { mode: 'disadvantage', locked: true, sources: disadvantage };
+    else if (advantage.length) fixed = { mode: 'advantage', locked: true, sources: advantage };
+    else fixed = { mode: 'normal', locked: false, sources: [] };
+    return heavyEncumbranceAffects(abilityKey, source) ? addForcedDisadvantage(fixed, 'Heavy Encumbrance') : fixed;
   }
 
   function effectiveRollMode(kind, key, value) {
@@ -370,8 +460,8 @@
     let manual = 'normal';
     if (kind === 'initiative') { fixed = fixedInitiative(source); manual = source.character.rollModes.initiative; }
     else if (kind === 'save') { fixed = fixedSave(key, source); manual = source.character.rollModes.saves?.[key]; }
-    else if (kind === 'skill') { fixed = fixedSkill(source); manual = source.character.rollModes.skills?.[key]; }
-    else { fixed = fixedAttack(source); manual = source.character.rollModes.attacks; }
+    else if (kind === 'skill') { fixed = fixedSkill(key, source); manual = source.character.rollModes.skills?.[key]; }
+    else { fixed = fixedAttack(key, source); manual = source.character.rollModes.attacks; }
     return fixed.locked ? fixed : { mode: manual || 'normal', locked: false, sources: [] };
   }
 
@@ -555,7 +645,7 @@
     return activeItems(source).filter(item => item.actionType && item.actionName).map(item => ({
       id: `item:${item.id}`, itemId: item.id, name: item.actionName, action: item.actionType,
       source: item.name, group: 'custom', summary: item.actionSummary || item.description || item.notes || '',
-      damage: item.actionDamage || '', isAttack: !!item.actionIsAttack
+      damage: item.actionDamage || '', ability: item.attackAbility || '', isAttack: !!item.actionIsAttack
     }));
   }
 
@@ -574,7 +664,8 @@
       for (const definition of definitions) {
         const raw = selected[definition.key];
         const values = Array.isArray(raw) ? raw.filter(Boolean) : raw ? [raw] : [];
-        if (values.length < definition.count) missing.push(`${feature.name}: ${definition.label}`);
+        const unconfirmedSubclass = definition.key === 'subclass' && !selected.subclassConfirmed;
+        if (values.length < definition.count || unconfirmedSubclass) missing.push(`${feature.name}: ${definition.label}`);
         if (definition.unique && new Set(values).size !== values.length) missing.push(`${feature.name}: choices must be unique`);
       }
     }
@@ -606,7 +697,8 @@
   }
 
   window.CharacterDerived = {
-    SKILLS, ARMOR, state, level, pb, subclassName, ability, mod, conditions, exhaustion, inventory, activeItems,
+    SKILLS, ARMOR, state, level, pb, subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
+    ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
     isItemEquipped, isItemActive, isWeapon, isArmor, isShield,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
     saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,

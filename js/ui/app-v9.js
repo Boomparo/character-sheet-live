@@ -13,8 +13,10 @@
   const Cropper = window.V7SPortraitCropper;
   if (!S || !D || !C || !T || !Rules || !Origin) return;
 
-  const PAGES = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
-  const TITLES = ['CHARACTER', 'ACTIONS', 'SKILLS', 'FEATURES', 'RELICS', 'GEAR', 'NPCs', 'BIO'];
+  const PAGE_DEFINITIONS = [
+    ['characterPage', 'CHARACTER'], ['actionsPage', 'ACTIONS'], ['skillsPage', 'SKILLS'], ['featuresPage', 'FEATURES'],
+    ['relicsPage', 'RELICS', 'relics'], ['gearPage', 'GEAR'], ['npcsPage', 'NPCs'], ['bioPage', 'BIO']
+  ].map(([id, title, system = '']) => ({ id, title, system }));
   const BIO_FIELDS = [
     ['background', 'Background'], ['alignment', 'Alignment'], ['age', 'Age'], ['height', 'Height'],
     ['weight', 'Weight'], ['eyes', 'Eyes'], ['hair', 'Hair'], ['skin', 'Skin'], ['faith', 'Faith'],
@@ -57,7 +59,7 @@
     featureSearch: '', catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
     catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '',
     pendingNpcRelations: [], activeNpcId: '', activeItemId: '', restMode: 'short', restHitDice: 0,
-    builderTab: 'setup', catalogItems: [], scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0
+    builderTab: 'setup', catalogItems: [], scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: ''
   };
 
   const $ = selector => document.querySelector(selector);
@@ -68,6 +70,10 @@
   const gpLabel = cp => {
     const value = Math.max(0, Number(cp) || 0) / 100;
     return `${Number.isInteger(value) ? value : value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} GP`;
+  };
+  const weightLabel = value => {
+    const weight = Math.round((Number(value) || 0) * 100) / 100;
+    return `${Number.isInteger(weight) ? weight : weight.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} lb.`;
   };
   const actionCode = value => ({ Action: 'A', 'Bonus Action': 'BA', Reaction: 'R', Free: 'FREE', Other: 'OTHER', Resource: 'RESOURCE', Passive: 'PASSIVE' }[value] || String(value || 'OTHER').toUpperCase());
   const actionFilterKey = value => value === 'Action' ? 'action' : value === 'Bonus Action' ? 'bonus' : value === 'Reaction' ? 'reaction' : 'other';
@@ -136,6 +142,8 @@
     const senses = D.proficiencyLists(source).senses;
     const armor = D.armorBreakdown(source);
     const subclass = D.subclassName(source);
+    const load = D.encumbrance(source);
+    const hasRelics = D.subclassHasSystem('relics', source);
     const luck = background.feat === 'Lucky' ? (() => {
       const max = D.pb(source), left = Math.max(0, max - (Number(background.luckUsed) || 0));
       return section('Lucky', `<p class="muted">${esc(feat.description)}</p><div class="cool-dots">${Array.from({ length: max }, (_, i) => `<button type="button" class="cool-dot ${i < left ? 'filled' : ''}" data-luck-adjust="${i < left ? 1 : -1}"></button>`).join('')}</div>`, `<span class="eyebrow">${left}/${max}</span>`);
@@ -152,7 +160,7 @@
         <button type="button" class="vital-card vital-ac" data-stat-detail="ac"><span class="vital-label">ARMOR CLASS</span><strong>${D.armorClass(source)}</strong><small>${esc(armor.label)} · View formula & edit</small></button>
       </div><div class="stat-grid combat-secondary">
         <button type="button" class="stat" data-stat-detail="initiative"><span>INIT</span><span class="stat-value-row"><b>${S.signed(D.initiative(source))}</b>${rollIndicator(initMode)}</span></button>
-        ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact')}${stat('PB', S.signed(D.pb(source)), 'compact')}
+        ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('LOAD', `${weightLabel(load.weight)} / ${weightLabel(load.limit)}`, 'encumbrance', 'compact')}${statDetail('PUSH / DRAG', weightLabel(load.pushDragLift), 'encumbrance', 'compact')}${hasRelics ? statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact') : ''}${stat('PB', S.signed(D.pb(source)), 'compact')}
       </div>${senses.length ? `<div class="character-senses"><b>SENSES</b>${senses.map(sense => `<span class="chip">${esc(sense)}</span>`).join('')}</div>` : ''}<div class="hero-actions rest-actions"><button class="small-btn" type="button" data-rest="short">Short Rest</button><button class="small-btn" type="button" data-rest="long">Long Rest</button><button class="small-btn ${c.inspiration ? 'primary' : ''}" type="button" data-inspiration>Inspiration</button></div>`)}
       ${section('Cool Points', `<div class="resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><small class="muted">Cool Die ${T.coolDie(D.level(source))}</small></div><b>${coolLeft}/${coolTotal}</b></div>`)}
       ${luck}
@@ -189,21 +197,23 @@
       summary: [weapon.rangeText ? `Range: ${weapon.rangeText}` : '', weapon.propertiesText ? `Properties: ${weapon.propertiesText}` : '', weapon.description || ''].filter(Boolean).join('\n'),
       hit: S.signed(weapon.hit), damage: weapon.damage, mastery: weapon.mastery,
       masteryDescription: weapon.masteryDescription, masterySources: weapon.masterySources,
-      effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], isAttack: true
+      effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], ability: weapon.ability, isAttack: true
     }));
     records.push(...D.itemActions(source));
     (source.character.spells || []).forEach(spell => records.push({ ...spell, id: `spell:${spell.id}`, source: spell.source || 'Spell', group: 'spells', isAttack: !!spell.isAttack }));
-    for (const entry of source.classes.treasureHunter.relics || []) {
-      if (!entry.prepared) continue;
-      const relic = Relics.find(item => item.id === entry.relicId);
-      if (!relic || relic.action === 'Passive') continue;
-      records.push({
-        id: `relic:${entry.instanceId}`, name: relic.name, action: relic.action, source: 'Relic', group: 'relics',
-        summary: relic.fullText || relic.summary, resource: { kind: 'relic', instanceId: entry.instanceId, used: entry.used, max: D.relicMax(entry, source) },
-        isAttack: /attack|útok/i.test(relic.fullText || '')
-      });
+    if (D.subclassHasSystem('relics', source)) {
+      for (const entry of source.classes.treasureHunter.relics || []) {
+        if (!entry.prepared) continue;
+        const relic = Relics.find(item => item.id === entry.relicId);
+        if (!relic || relic.action === 'Passive') continue;
+        records.push({
+          id: `relic:${entry.instanceId}`, name: relic.name, action: relic.action, source: 'Relic', group: 'relics',
+          summary: relic.fullText || relic.summary, resource: { kind: 'relic', instanceId: entry.instanceId, used: entry.used, max: D.relicMax(entry, source) },
+          isAttack: /attack|útok/i.test(relic.fullText || '')
+        });
+      }
     }
-    T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && (feature.kind !== 'subclass' || D.subclassName(source))).forEach(feature => records.push({
+    T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && D.featureMatchesSubclass(feature, source)).forEach(feature => records.push({
       id: feature.id, name: feature.name, action: feature.action, source: `Treasure Hunter ${feature.level}`, group: 'treasure',
       summary: feature.fullText || feature.summary, cost: Number(feature.cost) || 0, parentId: feature.parentId || FEATURE_PARENT[feature.id] || '',
       featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id)
@@ -230,7 +240,7 @@
     const source = state();
     const open = source.ui.openActions.includes(record.id);
     const favorite = source.ui.favoriteActions.includes(record.id);
-    const roll = record.isAttack ? rollIndicator(D.effectiveRollMode('attack', '', source)) : '';
+    const roll = record.isAttack ? rollIndicator(D.effectiveRollMode('attack', record.ability || '', source)) : '';
     const hasHit = record.hit !== undefined && record.hit !== null && record.hit !== '';
     const mastery = record.mastery ? `<div class="mastery-callout"><b>ON HIT · ${esc(record.mastery)} mastery</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.join(' · '))}</small>` : ''}</div>` : '';
     const effects = (record.effects || []).map(effect => `<div class="action-effect"><b>${esc(effect.name)}</b><span>${nl(effect.summary || '')}</span><small>${esc(effect.source || '')}</small></div>`).join('');
@@ -254,14 +264,30 @@
     return render('', 0);
   }
 
+  function actionMatchesFilter(record, filter) {
+    if (filter === 'all') return true;
+    if (filter === 'attack') return !!record.isAttack;
+    if (filter === 'other') return !['action', 'bonus', 'reaction'].includes(actionFilterKey(record.action));
+    return actionFilterKey(record.action) === filter;
+  }
+
   function renderActions() {
     const source = state();
-    const records = allActionRecords();
+    const allRecords = allActionRecords();
+    const selectedFilter = source.ui.actionFilter || 'all';
+    const records = allRecords.filter(record => actionMatchesFilter(record, selectedFilter));
     const favoriteIds = source.ui.favoriteActions;
     const coolTotal = T.coolTotal(D.level(source));
     const coolUsed = Math.min(coolTotal, Number(source.classes.treasureHunter.coolUsed) || 0);
     const coolLeft = Math.max(0, coolTotal - coolUsed);
     const coolDots = Array.from({ length: coolTotal }, (_, index) => `<button type="button" class="cool-dot ${index < coolLeft ? 'filled' : ''}" data-cool-adjust="${index < coolLeft ? 1 : -1}" aria-label="${index < coolLeft ? 'Spend' : 'Restore'} Cool Point"></button>`).join('');
+    const filterDefinitions = [
+      ['all', 'ALL'], ['attack', 'ATTACKS'], ['action', 'ACTIONS'], ['bonus', 'BONUS'], ['reaction', 'REACTIONS'], ['other', 'OTHER']
+    ];
+    const filters = filterDefinitions.map(([key, label]) => {
+      const count = allRecords.filter(record => actionMatchesFilter(record, key)).length;
+      return `<button type="button" class="filter-btn ${selectedFilter === key ? 'active' : ''}" data-action-filter="${key}">${label}<small>${count}</small></button>`;
+    }).join('');
     const groups = [
       ['favorites', 'Favorites'], ['weapons', 'Weapons'], ['spells', 'Spells'], ['relics', 'Relics'],
       ['treasure', 'Treasure Hunter'], ['core', 'Core'], ['custom', 'Custom']
@@ -269,10 +295,10 @@
     let body = '';
     for (const [key, label] of groups) {
       const groupRecords = key === 'favorites' ? records.filter(record => favoriteIds.includes(record.id)) : records.filter(record => record.group === key);
-      if (!groupRecords.length && key !== 'custom') continue;
+      if (!groupRecords.length && (key !== 'custom' || selectedFilter !== 'all')) continue;
       body += `<section class="action-group"><h3>${esc(label)}</h3><div class="list">${groupRecords.length ? renderActionTree(groupRecords) : '<div class="empty">No custom actions yet.</div>'}</div>${key === 'custom' ? '<button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button>' : ''}</section>`;
     }
-    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><i>Cool Die ${T.coolDie(D.level(source))}</i></div>${body}`;
+    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><i>Cool Die ${T.coolDie(D.level(source))}</i></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
   }
 
   function renderSkills() {
@@ -322,7 +348,7 @@
     return (T.choiceDefinitions?.[feature.id] || []).some(definition => {
       const raw = source.classes.treasureHunter.choices[definition.key];
       const values = Array.isArray(raw) ? raw.filter(Boolean) : raw ? [raw] : [];
-      return values.length < definition.count || (definition.unique && new Set(values).size !== values.length);
+      return values.length < definition.count || (definition.key === 'subclass' && !source.classes.treasureHunter.choices.subclassConfirmed) || (definition.unique && new Set(values).size !== values.length);
     });
   }
 
@@ -332,8 +358,9 @@
     const favorite = source.ui.favoriteFeatures.includes(feature.id);
     const used = Number(source.classes.treasureHunter.featureUses?.[feature.id]) || 0;
     const choiceMissing = feature.level <= D.level(source) && featureChoiceIncomplete(feature, source);
+    const subclassFeature = D.featureSubclassDefinition(feature);
     return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}">
-      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><strong>${esc(feature.name)}</strong><span class="row-meta"><span>Level ${feature.level}</span>${feature.kind === 'subclass' ? '<span>Occult Collector</span>' : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span>${feature.cost} Cool</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
+      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><strong>${esc(feature.name)}</strong><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span>${feature.cost} Cool</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
       <div class="row-detail">${nl(feature.fullText || feature.summary)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
     </article>`;
   }
@@ -366,7 +393,7 @@
     const source = state();
     const missing = [...Origin.originIncomplete(source), ...D.choiceRequirements(source)];
     const progression = source.ui.featureView === 'progression';
-    let features = T.features.filter(feature => progression || (feature.level <= D.level(source) && (feature.kind !== 'subclass' || D.subclassName(source)))).filter(feature => featureMatches(feature, source));
+    let features = T.features.filter(feature => D.featureMatchesSubclass(feature, source) && (progression || feature.level <= D.level(source))).filter(feature => featureMatches(feature, source));
     const favorite = new Set(source.ui.favoriteFeatures);
     features = features.sort((a, b) => (favorite.has(b.id) ? 1 : 0) - (favorite.has(a.id) ? 1 : 0) || a.level - b.level || a.name.localeCompare(b.name));
     const originFeatures = Origin.featureRecords(source).filter(feature => featureMatches(feature, source));
@@ -380,6 +407,10 @@
 
   function renderRelics() {
     const source = state();
+    if (!D.subclassHasSystem('relics', source)) {
+      $('#relicsPage').innerHTML = '';
+      return;
+    }
     const level = D.level(source);
     const subclass = D.subclassName(source);
     const limits = subclass ? T.relicLimit(level) : [0, 0, 0];
@@ -462,6 +493,7 @@
     const equipped = D.isItemEquipped(item);
     const active = D.isItemActive(item);
     const effectiveLocation = effectiveItemLocation(item, context);
+    const stackWeight = D.itemStackWeight(item);
     const fields = Catalog ? Catalog.displayFields(item).map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('') : '';
     const mechanicRows = [
       [item.damage ? 'Damage' : '', [item.damage, item.damageType].filter(Boolean).join(' ')],
@@ -481,13 +513,14 @@
     const equipButton = !item.isContainer ? `<button type="button" class="small-btn item-equip ${equipped ? 'primary' : ''}" data-item-equip="${esc(item.id)}">${equipped ? 'Unequip' : 'Equip'}</button>` : '';
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
     return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}">
-      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><strong>${esc(item.name)}</strong><span class="row-meta"><span>${parent ? `In ${esc(parent.name)}` : esc(LOCATION_LABELS[effectiveLocation] || effectiveLocation)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
+      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><strong>${esc(item.name)}</strong><span class="row-meta"><span>${parent ? `In ${esc(parent.name)}` : esc(LOCATION_LABELS[effectiveLocation] || effectiveLocation)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight">${stackWeight == null ? 'WEIGHT ?' : esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
       <div class="inventory-detail">${activationNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label><label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label><label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
   }
 
   function renderGear() {
     const source = state();
+    const load = D.encumbrance(source);
     const money = source.character.gear.money || {};
     const wallet = [['pp', 'PP', 'P'], ['gp', 'GP', 'G'], ['ep', 'EP', 'E'], ['sp', 'SP', 'S'], ['cp', 'CP', 'C']].map(([key, label, short]) => `<span title="${label}"><b>${Number(money[key]) || 0}</b><i>${short}</i></span>`).join('');
     const context = gearContext(source);
@@ -505,6 +538,7 @@
     }).join('');
     const itemCards = locationGroups || '<div class="empty">Inventory is empty.</div>';
     $('#gearPage').innerHTML = `${pageIntro('GEAR', 'Equipment, locations, containers and money')}
+      ${section('Load & Encumbrance', `<div class="encumbrance-panel ${esc(load.status)}"><label>Rule mode<select id="encumbranceMode"><option value="basic" ${load.mode === 'basic' ? 'selected' : ''}>Basic · STR ×15</option><option value="balanced" ${load.mode === 'balanced' ? 'selected' : ''}>Expedition · STR ×10</option><option value="variant" ${load.mode === 'variant' ? 'selected' : ''}>Variant · STR ×5 / ×10 / ×15</option></select></label><div class="stat-grid encumbrance-stats">${stat('CARRIED', weightLabel(load.weight), 'compact')}${stat('CAPACITY', weightLabel(load.limit), 'compact')}${stat('PUSH / DRAG / LIFT', weightLabel(load.pushDragLift), 'compact wide')}${stat('STATUS', load.statusLabel, 'compact wide')}</div><p class="encumbrance-rule">${load.mode === 'variant' ? `Over ${weightLabel(load.lightLimit)}: Speed −10 ft. · Over ${weightLabel(load.heavyLimit)}: Speed −20 ft. and Disadvantage on STR, DEX and CON attacks, checks and saves · Maximum ${weightLabel(load.standardLimit)}.` : load.mode === 'balanced' ? `Expedition mode uses the requested middle limit of STR ×10. Push, Drag and Lift stay at STR ×30.` : `Basic mode uses carrying capacity STR ×15. Push, Drag and Lift use STR ×30.`}</p>${load.unknownWeights ? `<div class="load-warning">${load.unknownWeights} item${load.unknownWeights === 1 ? '' : 's'} still ${load.unknownWeights === 1 ? 'has' : 'have'} no weight and ${load.unknownWeights === 1 ? 'is' : 'are'} not included.</div>` : ''}</div>`)}
       ${section('Money', `<button type="button" class="money-wallet" data-money-open>${wallet}<small>Tap to edit</small></button>`)}
       ${section('Inventory', `<div class="detail-actions"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
     `;
@@ -531,6 +565,7 @@
   }
 
   function renderAll() {
+    const pagesChanged = syncPageVisibility();
     renderTop();
     renderCharacter();
     renderActions();
@@ -540,27 +575,53 @@
     renderGear();
     renderNpcs();
     renderBio();
-    updatePageChrome();
+    initDots();
+    if (pagesChanged) requestAnimationFrame(() => {
+      const requested = state().ui.pageId;
+      const target = visiblePages().some(page => page.id === requested) ? requested : 'featuresPage';
+      setPage(target, false, target !== requested);
+    }); else updatePageChrome();
   }
 
+  function visiblePages(source = state()) {
+    return PAGE_DEFINITIONS.filter(page => !page.system || D.subclassHasSystem(page.system, source));
+  }
+  function syncPageVisibility() {
+    const pages = visiblePages();
+    const visibleIds = new Set(pages.map(page => page.id));
+    const signature = pages.map(page => page.id).join('|');
+    const changed = signature !== local.visiblePageSignature;
+    local.visiblePageSignature = signature;
+    for (const page of PAGE_DEFINITIONS) {
+      const wrapper = $(`#${page.id}`)?.closest('.sheet-page');
+      if (wrapper) wrapper.hidden = !visibleIds.has(page.id);
+    }
+    return changed;
+  }
   function currentPageIndex() {
     const pager = $('#pager');
-    return Math.max(0, Math.min(PAGES.length - 1, Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth))));
+    return Math.max(0, Math.min(visiblePages().length - 1, Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth))));
   }
   function updatePageChrome(index = currentPageIndex()) {
-    $('#pageTitle').textContent = TITLES[index];
+    const pages = visiblePages();
+    const active = pages[Math.max(0, Math.min(pages.length - 1, index))] || pages[0];
+    $('#pageTitle').textContent = active?.title || 'CHARACTER';
     $$('#pageDots .page-dot').forEach((dot, dotIndex) => dot.classList.toggle('active', index === dotIndex));
   }
-  function setPage(index, smooth = true, save = true) {
-    const next = Math.max(0, Math.min(PAGES.length - 1, Number(index) || 0));
+  function setPage(target, smooth = true, save = true) {
+    const pages = visiblePages();
+    const requestedIndex = typeof target === 'string' ? pages.findIndex(page => page.id === target) : Number(target);
+    const fallbackIndex = Math.max(0, pages.findIndex(page => page.id === 'featuresPage'));
+    const next = Math.max(0, Math.min(pages.length - 1, Number.isFinite(requestedIndex) && requestedIndex >= 0 ? requestedIndex : fallbackIndex));
+    const pageId = pages[next]?.id || 'characterPage';
     const pager = $('#pager');
     const adjacent = Math.abs(next - currentPageIndex()) === 1;
     pager.scrollTo({ left: pager.clientWidth * next, behavior: smooth && adjacent ? 'smooth' : 'auto' });
     updatePageChrome(next);
-    if (save && state().ui.page !== next) C.setUi('page', next);
+    if (save && state().ui.pageId !== pageId) C.setUi('pageId', pageId);
   }
   function initDots() {
-    $('#pageDots').innerHTML = PAGES.map((page, index) => `<button type="button" class="page-dot" data-page-dot="${index}" aria-label="${TITLES[index]}"></button>`).join('');
+    $('#pageDots').innerHTML = visiblePages().map(page => `<button type="button" class="page-dot" data-page-dot="${page.id}" aria-label="${page.title}"></button>`).join('');
   }
   function onPagerScroll() {
     if (local.scrollRaf) return;
@@ -569,7 +630,10 @@
       const index = currentPageIndex();
       updatePageChrome(index);
       clearTimeout(local.scrollTimer);
-      local.scrollTimer = setTimeout(() => { if (state().ui.page !== index) C.setUi('page', index); }, 160);
+      local.scrollTimer = setTimeout(() => {
+        const pageId = visiblePages()[index]?.id;
+        if (pageId && state().ui.pageId !== pageId) C.setUi('pageId', pageId);
+      }, 160);
     });
   }
 
@@ -590,6 +654,7 @@
       <dialog id="statDialog" class="sheet-dialog"><form method="dialog"><div class="dialog-head"><strong id="statTitle">Stat</strong><button value="cancel" class="icon-btn">×</button></div><div id="statBody"></div></form></dialog>
       <dialog id="importDialog" class="sheet-dialog import-dialog"><form method="dialog"><div class="dialog-head"><strong>Import Character Data</strong><button value="cancel" class="icon-btn">×</button></div><label>JSON file<input id="importFile" type="file" accept="application/json,.json"></label><textarea id="importText" rows="14" spellcheck="false" placeholder="Paste complete character JSON…"></textarea><div id="importReport" class="import-report">V9/V7 character, roster, Character Craft and simple character JSON are supported.</div><menu><button value="cancel" class="ghost">Cancel</button><button type="button" id="applyImport" class="primary">Import</button></menu></form></dialog>
     `);
+    $('#itemEditQuantity').closest('label').insertAdjacentHTML('afterend', '<label>Weight per item (lb.)<input id="itemEditWeight" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Unknown"></label>');
   }
 
   function centerHpWheelOn(value) {
@@ -654,7 +719,7 @@
     const recoveryChoices = `<div class="rest-choice-list">
       <label class="rest-option"><input id="restCool" type="checkbox" checked><span><b>Cool Points</b><small>Restore the global Cool pool.</small></span></label>
       <label class="rest-option"><input id="restFeatures" type="checkbox" checked><span><b>Feature uses</b><small>Restore uses eligible for this rest.</small></span></label>
-      <label class="rest-option"><input id="restRelics" type="checkbox" checked><span><b>Relic charges</b><small>Restore charges eligible for this rest.</small></span></label>
+      ${D.subclassHasSystem('relics', source) ? '<label class="rest-option"><input id="restRelics" type="checkbox" checked><span><b>Relic charges</b><small>Restore charges eligible for this rest.</small></span></label>' : ''}
     </div>`;
     $('#restBody').innerHTML = long ? `<p class="muted">Choose exactly which benefits this Long Rest applies.</p><div class="rest-choice-list">
       <label class="rest-option"><input id="restHp" type="checkbox" checked><span><b>Hit Points</b><small>Restore Current HP to maximum.</small></span></label>
@@ -813,7 +878,7 @@
     if (kind === 'ac') {
       const breakdown = D.armorBreakdown(source);
       title = `Armor Class ${breakdown.value}`;
-      body = `<div class="formula-list">${breakdown.parts.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div><div class="stat-editor-note"><b>${source.character.acMode === 'manual' ? 'Manual AC' : 'Automatic AC'}</b><span>Automatic AC is calculated from worn armor, DEX, shield, equipped items, prepared relics and feature grants.</span></div><div class="detail-actions"><button type="button" class="small-btn primary" data-open-edit>Edit AC settings</button><button type="button" class="small-btn" data-jump-page="5">Manage armor in Gear</button></div>`;
+      body = `<div class="formula-list">${breakdown.parts.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div><div class="stat-editor-note"><b>${source.character.acMode === 'manual' ? 'Manual AC' : 'Automatic AC'}</b><span>Automatic AC is calculated from worn armor, DEX, shield, equipped items, prepared relics and feature grants.</span></div><div class="detail-actions"><button type="button" class="small-btn primary" data-open-edit>Edit AC settings</button><button type="button" class="small-btn" data-jump-page="gearPage">Manage armor in Gear</button></div>`;
     } else if (kind === 'initiative') {
       const breakdown = D.initiativeBreakdown(source);
       title = `Initiative ${S.signed(breakdown.value)}`; rollKind = 'initiative';
@@ -821,7 +886,11 @@
     } else if (kind === 'speed') {
       const breakdown = D.speedBreakdown(source);
       title = `Speed ${breakdown.value} ft.`;
-      body = `<div class="formula-list">${breakdown.parts.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div><div class="detail-actions"><button type="button" class="small-btn primary" data-open-edit>Edit base Speed</button><button type="button" class="small-btn" data-jump-page="5">Manage equipped items</button></div>`;
+      body = `<div class="formula-list">${breakdown.parts.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div><div class="detail-actions"><button type="button" class="small-btn primary" data-open-edit>Edit base Speed</button><button type="button" class="small-btn" data-jump-page="gearPage">Manage equipped items</button></div>`;
+    } else if (kind === 'encumbrance') {
+      const load = D.encumbrance(source);
+      title = `Load · ${load.statusLabel}`;
+      body = `<div class="formula-list"><div class="formula-row"><span>Carried weight</span><b>${esc(weightLabel(load.weight))}</b></div><div class="formula-row"><span>${esc(load.modeLabel)}</span><b>${esc(weightLabel(load.limit))}</b></div><div class="formula-row"><span>Push, Drag or Lift</span><b>${esc(weightLabel(load.pushDragLift))}</b></div><div class="formula-row"><span>Size multiplier</span><b>×${esc(load.sizeMultiplier)}</b></div>${load.speedPenalty ? `<div class="formula-row"><span>Speed penalty</span><b>−${load.speedPenalty} ft.</b></div>` : ''}</div><div class="stat-editor-note"><b>${esc(load.statusLabel)}</b><span>${load.unknownWeights ? `${load.unknownWeights} item weights are unknown. ` : ''}Containers count with their contents; items on the ground or in storage do not.</span></div><div class="detail-actions"><button type="button" class="small-btn primary" data-jump-page="gearPage">Manage load in Gear</button></div>`;
     } else if (kind === 'whipDc' || kind === 'relicDc') {
       const relic = kind === 'relicDc';
       const breakdown = D.dcBreakdown(relic ? 'relic' : 'whipRope', source);
@@ -886,6 +955,7 @@
     $('#itemEditType').value = itemType(draft);
     $('#itemEditLocation').value = item?.location || 'carried';
     $('#itemEditQuantity').value = item?.quantity || 1;
+    $('#itemEditWeight').value = item?.weight ?? item?.raw?.weight ?? '';
     $('#itemEditContainer').checked = !!item?.isContainer;
     $('#itemEditStoredIn').innerHTML = itemContainerOptions(draft, context);
     $('#itemEditStoredIn').value = item?.containerId || '';
@@ -1144,7 +1214,9 @@
         const costCp = Catalog.costInCp(item);
         const unavailable = local.catalogMode === 'starting' && (costCp == null || costCp > status.remainingCp);
         const tagList = (item.tags || []).filter(tag => Catalog.TAG_OPTIONS.some(([key]) => key === tag)).slice(0, 6);
-        return `<article class="catalog-item ${item.homebrew ? 'homebrew' : ''}"><div class="catalog-item-copy"><div class="catalog-item-title"><strong>${esc(item.name)}</strong><b class="item-price">${esc(Catalog.priceLabel(item))}</b></div><small>${esc(item.kind)} · ${esc(item.rarityLabel || item.rarity)} · ${esc(item.category)}</small><div class="catalog-item-tags">${tagList.map(tag => `<span>${esc(tag)}</span>`).join('')}</div><em>${esc(item.source || '')}</em></div><button type="button" class="small-btn ${local.catalogMode === 'starting' ? 'primary' : ''}" data-catalog-add="${esc(item.id)}" ${unavailable ? 'disabled' : ''}>${local.catalogMode === 'starting' ? costCp == null ? 'No price' : costCp > status.remainingCp ? 'Too costly' : 'Buy' : 'Add'}</button></article>`;
+        const catalogWeightValue = item.weight ?? item.raw?.weight;
+        const catalogWeight = catalogWeightValue == null ? 'Weight unknown' : weightLabel(catalogWeightValue);
+        return `<article class="catalog-item ${item.homebrew ? 'homebrew' : ''}"><div class="catalog-item-copy"><div class="catalog-item-title"><strong>${esc(item.name)}</strong><b class="item-price">${esc(Catalog.priceLabel(item))}</b></div><small>${esc(item.kind)} · ${esc(item.rarityLabel || item.rarity)} · ${esc(item.category)} · ${esc(catalogWeight)}</small><div class="catalog-item-tags">${tagList.map(tag => `<span>${esc(tag)}</span>`).join('')}</div><em>${esc(item.source || '')}</em></div><button type="button" class="small-btn ${local.catalogMode === 'starting' ? 'primary' : ''}" data-catalog-add="${esc(item.id)}" ${unavailable ? 'disabled' : ''}>${local.catalogMode === 'starting' ? costCp == null ? 'No price' : costCp > status.remainingCp ? 'Too costly' : 'Buy' : 'Add'}</button></article>`;
       }).join('') || '<div class="empty">No matching items.</div>';
       renderStartingShopStatus();
     } catch (error) {
@@ -1183,10 +1255,10 @@
     if (!query) { $('#globalSearchResults').innerHTML = ''; return; }
     const source = state();
     const results = [];
-    T.features.filter(feature => feature.level <= D.level(source)).forEach(feature => { if (`${feature.name} ${feature.summary}`.toLowerCase().includes(query)) results.push({ type: 'FEATURE', title: feature.name, page: 3 }); });
-    Relics.filter(relic => relic.level <= D.level(source)).forEach(relic => { if (`${relic.name} ${relic.summary}`.toLowerCase().includes(query)) results.push({ type: 'RELIC', title: relic.name, page: 4 }); });
-    allGearItems(source).forEach(({ item }) => { if (`${item.name} ${item.description || ''}`.toLowerCase().includes(query)) results.push({ type: 'ITEM', title: item.name, page: 5 }); });
-    source.campaign.npcs.forEach(npc => { if (`${npc.name} ${npc.notes || ''}`.toLowerCase().includes(query)) results.push({ type: 'NPC', title: npc.name, page: 6 }); });
+    T.features.filter(feature => feature.level <= D.level(source) && D.featureMatchesSubclass(feature, source)).forEach(feature => { if (`${feature.name} ${feature.summary}`.toLowerCase().includes(query)) results.push({ type: 'FEATURE', title: feature.name, page: 'featuresPage' }); });
+    if (D.subclassHasSystem('relics', source)) Relics.filter(relic => relic.level <= D.level(source)).forEach(relic => { if (`${relic.name} ${relic.summary}`.toLowerCase().includes(query)) results.push({ type: 'RELIC', title: relic.name, page: 'relicsPage' }); });
+    allGearItems(source).forEach(({ item }) => { if (`${item.name} ${item.description || ''}`.toLowerCase().includes(query)) results.push({ type: 'ITEM', title: item.name, page: 'gearPage' }); });
+    source.campaign.npcs.forEach(npc => { if (`${npc.name} ${npc.notes || ''}`.toLowerCase().includes(query)) results.push({ type: 'NPC', title: npc.name, page: 'npcsPage' }); });
     $('#globalSearchResults').innerHTML = results.slice(0, 40).map(result => `<button type="button" class="search-result" data-search-jump="${result.page}"><small>${result.type}</small><strong>${esc(result.title)}</strong></button>`).join('') || '<div class="empty">Nothing found.</div>';
   }
 
@@ -1247,11 +1319,11 @@
 
     if (button.id === 'prevPage') { setPage(currentPageIndex() - 1); return; }
     if (button.id === 'nextPage') { setPage(currentPageIndex() + 1); return; }
-    if (button.dataset.pageDot != null) { setPage(Number(button.dataset.pageDot)); return; }
+    if (button.dataset.pageDot != null) { setPage(button.dataset.pageDot); return; }
     if (button.hasAttribute('data-open-edit')) { closeDialog('#statDialog'); openEdit(); return; }
     if (button.id === 'builderBtn') { openBuilder(); return; }
     if (button.hasAttribute('data-open-builder')) { closeDialog('#statDialog'); openBuilder(); return; }
-    if (button.dataset.jumpPage != null) { closeDialog('#statDialog'); setPage(Number(button.dataset.jumpPage)); return; }
+    if (button.dataset.jumpPage != null) { closeDialog('#statDialog'); setPage(button.dataset.jumpPage); return; }
     if (button.id === 'charactersBtn') { renderRoster(); return; }
     if (button.id === 'searchBtn') { $('#globalSearch').value = ''; $('#globalSearchResults').innerHTML = ''; showDialog('#searchDialog'); setTimeout(() => $('#globalSearch').focus(), 0); return; }
 
@@ -1289,6 +1361,7 @@
     if (button.dataset.exhaustionAdjust) { C.adjustExhaustion(button.dataset.exhaustionAdjust); return; }
     if (button.hasAttribute('data-defense-add')) { const kind = $('#defenseKind').value, value = $('#defenseValue').value; if (value) C.addDefense(kind, value); return; }
     if (button.dataset.defenseRemove) { const separator = button.dataset.defenseRemove.indexOf(':'); C.removeDefense(button.dataset.defenseRemove.slice(0, separator), button.dataset.defenseRemove.slice(separator + 1)); return; }
+    if (button.dataset.actionFilter) { C.setUi('actionFilter', button.dataset.actionFilter); return; }
     if (button.dataset.actionToggle) { C.toggleOpen('action', button.dataset.actionToggle); return; }
     if (button.dataset.actionFavorite) { C.toggleFavorite('action', button.dataset.actionFavorite); return; }
     if (button.dataset.actionUse) { useAction(button.dataset.actionUse); return; }
@@ -1428,11 +1501,12 @@
     if (button.dataset.rosterSwitch) { Roster?.switchTo(button.dataset.rosterSwitch); closeDialog('#charactersDialog'); return; }
     if (button.dataset.rosterDuplicate) { Roster?.duplicate(button.dataset.rosterDuplicate); closeDialog('#charactersDialog'); toast('Character duplicated.'); return; }
     if (button.dataset.rosterDelete) { if (confirm('Delete this character?')) { Roster?.remove(button.dataset.rosterDelete); renderRoster(); } return; }
-    if (button.dataset.searchJump != null) { closeDialog('#searchDialog'); setPage(Number(button.dataset.searchJump)); return; }
+    if (button.dataset.searchJump != null) { closeDialog('#searchDialog'); setPage(button.dataset.searchJump); return; }
   }
 
   function onChange(event) {
     const target = event.target;
+    if (target.id === 'encumbranceMode') { C.setEncumbranceMode(target.value); return; }
     if (target.id === 'defenseKind') {
       $('#defenseValue').innerHTML = target.value === 'conditionImmunity' ? $('#conditionDefenseOptions').innerHTML : $('#damageDefenseOptions').innerHTML;
       return;
@@ -1544,7 +1618,7 @@
         temp: long ? $('#restTemp').checked : false,
         recoverHitDice: long ? $('#restHitDiceRecover').checked : false,
         exhaustion: long ? $('#restExhaustion').checked : false,
-        cool: $('#restCool').checked, features: $('#restFeatures').checked, relics: $('#restRelics').checked
+        cool: $('#restCool').checked, features: $('#restFeatures').checked, relics: $('#restRelics')?.checked || false
       });
       if (!result.ok) { toast('You cannot finish a rest at 0 HP.', 'warn'); return; }
       closeDialog('#restDialog');
@@ -1555,6 +1629,7 @@
       const type = $('#itemEditType').value;
       const values = {
         name: $('#itemEditName').value, itemType: type, quantity: $('#itemEditQuantity').value,
+        weight: $('#itemEditWeight').value === '' ? null : Math.max(0, Number($('#itemEditWeight').value) || 0),
         cost: $('#itemEditPrice').value === '' ? null : { quantity: Math.max(0, Number($('#itemEditPrice').value) || 0), unit: $('#itemEditCurrency').value },
         isContainer: type === 'container' || $('#itemEditContainer').checked,
         attunement: $('#itemEditAttunement').checked, isAttuned: $('#itemEditAttunement').checked && $('#itemEditAttuned').checked,
@@ -1613,7 +1688,6 @@
     S.subscribe(() => renderAll());
     C.reconcileDerived();
     renderAll();
-    requestAnimationFrame(() => setPage(state().ui.page, false, false));
   }
 
   document.addEventListener('DOMContentLoaded', initialize, { once: true });

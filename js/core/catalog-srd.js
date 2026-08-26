@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const CACHE_KEY = 'v9-srd-2024-items-v4';
+  const CACHE_KEY = 'v9-srd-2024-items-v5';
   const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
   const EQUIPMENT_URL = 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2024/en/5e-SRD-Equipment.json';
   const MAGIC_URL = 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2024/en/5e-SRD-Magic-Items.json';
@@ -278,6 +278,12 @@
   function cloneForInventory(item) {
     const copy = clone({ ...item, addedAt: new Date().toISOString() });
     copy.id = item.id;
+    const bundleSize = Math.max(1, Math.floor(Number(copy.quantity) || 1));
+    if (bundleSize > 1) {
+      copy.bundleSize = bundleSize;
+      if (!new RegExp(`\\(${bundleSize}\\)`).test(copy.name)) copy.name = `${copy.name} (${bundleSize})`;
+    }
+    copy.quantity = 1;
     copy.itemType = copy.itemType || (copy.tags?.includes('weapon') ? 'weapon' : copy.tags?.includes('armor') ? 'armor' : copy.tags?.includes('container') ? 'container' : 'item');
     copy.isContainer = copy.itemType === 'container' || !!copy.isContainer;
     copy.cost = copy.cost || copy.raw?.cost || null;

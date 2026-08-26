@@ -127,15 +127,38 @@
     action: 'Passive', cost: 0, kind: 'class', summary: feature.fullText, ...feature
   }));
 
+  const subclassDefinitions = [];
+  function registerSubclass(definition = {}) {
+    const id = String(definition.id || '').trim();
+    const name = String(definition.name || '').trim();
+    if (!id || !name) throw new Error('A Treasure Hunter subclass needs an id and name.');
+    for (const feature of definition.features || []) {
+      if (!feature?.id || T.features.some(current => current.id === feature.id)) continue;
+      T.features.push({ action: 'Passive', cost: 0, ...feature, kind: 'subclass', subclassId: id });
+    }
+    const record = {
+      id, name, choiceValue: String(definition.choiceValue || name), minLevel: Math.max(1, Number(definition.minLevel) || 3),
+      systems: [...new Set((definition.systems || []).map(String).filter(Boolean))]
+    };
+    const existing = subclassDefinitions.findIndex(current => current.id === id);
+    if (existing >= 0) subclassDefinitions[existing] = record; else subclassDefinitions.push(record);
+    T.subclasses = subclassDefinitions.map(current => current.choiceValue);
+    return record;
+  }
+
   for (const feature of T.features) {
     if (featureNames[feature.id]) feature.name = featureNames[feature.id];
     if (parentIds[feature.id]) feature.parentId = parentIds[feature.id];
     if (feature.id === 'towing') feature.kind = 'subaction';
   }
   for (const feature of umbrella) if (!T.features.some(current => current.id === feature.id)) T.features.push(feature);
+  for (const feature of T.features) if (feature.kind === 'subclass' && !feature.subclassId) feature.subclassId = 'occult-collector';
+  registerSubclass({ id: 'occult-collector', name: 'Occult Collector', minLevel: 3, systems: ['relics'] });
   for (const relic of relics) if (relicNames[relic.id]) relic.name = relicNames[relic.id];
   if (T.choiceDefinitions?.['ancient-languages']?.[0]) T.choiceDefinitions['ancient-languages'][0].label = 'Starodávné jazyky';
 
   T.contentVersion = 'Treasure Hunter v8 final DOCX';
   T.featureParentIds = parentIds;
+  T.subclassDefinitions = subclassDefinitions;
+  T.registerSubclass = registerSubclass;
 })();

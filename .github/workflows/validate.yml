@@ -43,8 +43,8 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v9-ux-8' service-worker.js
-          grep -q "service-worker.js?v=9.3.1" index.html
+          grep -q 'character-sheet-v9-ux-9' service-worker.js
+          grep -q "service-worker.js?v=9.4.0" index.html
           test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 8
           grep -q 'id="bioPage"' index.html
           grep -q 'id="builderBtn"' index.html
