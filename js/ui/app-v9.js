@@ -1124,6 +1124,12 @@
     if (statTarget) { event.preventDefault(); openStatDetail(statTarget.dataset.statDetail); return; }
     const button = event.target.closest('button');
     if (!button) return;
+    const parentDialog = button.closest('dialog');
+    if (parentDialog && button.value === 'cancel') {
+      event.preventDefault();
+      closeDialog(`#${parentDialog.id}`);
+      return;
+    }
 
     if (button.id === 'prevPage') { setPage(currentPageIndex() - 1); return; }
     if (button.id === 'nextPage') { setPage(currentPageIndex() + 1); return; }

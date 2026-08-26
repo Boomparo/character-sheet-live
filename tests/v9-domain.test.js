@@ -45,7 +45,7 @@ const C = global.CharacterCommands;
 const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 
-assert.equal(S.APP_VERSION, '9.2.0-sheet-ux');
+assert.equal(S.APP_VERSION, '9.2.1-sheet-ux');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -405,7 +405,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
-  assert.match(index, /service-worker\.js\?v=9\.2\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.2\.1/);
   assert.match(app, /\['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
   const npcRenderer = app.slice(app.indexOf('function renderNpcs()'), app.indexOf('function renderAll()'));
   assert.equal(npcRenderer.includes('npcDeleteBtn'), false, 'NPC list renderer must not expose deletion');
@@ -417,6 +417,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.ability-grid\{grid-template-columns:repeat\(3/);
   assert.match(app, /class="ability ability-v9"/);
   assert.match(app, /data-npc-image-storage/);
+  assert.match(app, /parentDialog && button\.value === 'cancel'/, 'dialog Cancel buttons close without submitting their forms');
   assert.match(app, /money\$\{id\}Delta/);
   assert.match(app, /data-item-equip/);
   assert.equal(app.includes('data-builder-tab="progression"'), false, 'Progression belongs only on Features');
