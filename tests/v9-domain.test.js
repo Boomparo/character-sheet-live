@@ -19,7 +19,7 @@ const legacy = {
     name: 'Legacy Hero', race: 'City Goblin', level: 3,
     hp: { current: 22, max: 22, temp: 4, auto: false },
     abilities: { STR: 10, DEX: 16, CON: 12, INT: 14, WIS: 10, CHA: 8 },
-    speed: 25, skills: { Stealth: 2, History: 1, Arcana: 1 }, gear: { money: { gp: 7 }, inventory: [], weapons: [], armor: [] },
+    speed: 25, skills: { Stealth: 2, History: 1, Arcana: 1 }, gear: { money: { gp: 7 }, inventory: [{ id: 'legacy-torch', name: 'Torch', location: 'backpack' }], weapons: [], armor: [] },
     origin: {
       species: 'City Goblin', speciesChoices: { skills: ['Stealth', 'Deception'], simpleWeapon: 'Dagger' },
       background: { name: 'Lukyho univerzální background', skills: ['History', 'Insight'], tool: 'Forgery Kit', secondary: 'Train', feat: 'Alert', abilityMode: '+2/+1', abilityChoices: ['DEX', 'INT'], appliedBonuses: { DEX: 2, INT: 1 } }
@@ -36,7 +36,7 @@ for (const file of [
   'js/classes/treasure-hunter/choices-v7s.js',
   'js/classes/treasure-hunter/content-v9.js',
   'js/core/state-v9.js', 'js/core/rules-2024.js', 'js/core/origin-v9.js',
-  'js/core/derived-v9.js', 'js/core/commands-v9.js'
+  'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/core/catalog-srd.js'
 ]) require(path.join(root, file));
 
 const S = global.CharacterState;
@@ -44,8 +44,9 @@ const D = global.CharacterDerived;
 const C = global.CharacterCommands;
 const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
+const Catalog = global.V7SItemCatalog;
 
-assert.equal(S.APP_VERSION, '9.2.1-sheet-ux');
+assert.equal(S.APP_VERSION, '9.3.0-expedition-ux');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -58,7 +59,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 12);
+  assert.equal(state.schemaVersion, 13);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -73,8 +74,13 @@ test('legacy V7 data migrates once without deleting the legacy key', () => {
   assert.equal(D.skillStatus('History', state), 1);
   S.update(current => { current.character.origin.background.skills = ['Nature', 'Insight']; });
   assert.equal(D.skillStatus('History'), 0, 'changing a generated choice removes its old mechanical grant');
-  assert.ok(state.character.gear.armor.some(item => item.name === 'Leather Armor' && item.location === 'worn'));
-  assert.equal(state.character.gear.inventory.filter(item => item.name === "Explorer's Pack").length, 1);
+  assert.equal(state.character.gear.armor.length, 0, 'migration does not invent a fixed class loadout');
+  const backpack = state.character.gear.inventory.find(item => item.name === 'Backpack');
+  const torch = state.character.gear.inventory.find(item => item.id === 'legacy-torch');
+  assert.equal(backpack.isContainer, true, 'legacy pseudo-Backpack becomes a real container item');
+  assert.equal(torch.containerId, backpack.id);
+  assert.equal(torch.location, backpack.location);
+  assert.equal(state.character.gear.starting.legacy, true);
   assert.ok(memory.has('character-sheet-v7s'));
   assert.ok(memory.has('character-sheet-v9'));
 });
@@ -118,7 +124,7 @@ test('automatic AC has one calculation for armor, shield and Defence', () => {
   fresh(state => {
     state.character.abilities.DEX = 16;
   });
-  assert.equal(D.armorClass(), 14);
+  assert.equal(D.armorClass(), 13);
   S.update(state => {
     state.character.gear.inventory.push({ id: 'studded', name: 'Studded Leather Armor', location: 'worn', quantity: 1, modifiers: [], raw: { armor_class: { base: 12, dex_bonus: true } } });
     state.character.gear.inventory.push({ id: 'shield', name: 'Shield', location: 'equipped', quantity: 1, modifiers: [], raw: { armor_category: 'Shield', armor_class: { base: 2 } } });
@@ -134,6 +140,7 @@ test('subclass identity starts at level 3 and Whip mastery is automatic', () => 
   fresh(state => {
     state.character.level = 1;
     state.classes.treasureHunter.choices.weaponMasteries = ['Dagger', 'Shortbow'];
+    state.character.gear.weapons.push({ id: 'whip', name: 'Whip', itemType: 'weapon', damage: '1d4', damageType: 'Slashing', mastery: 'Slow', location: 'equipped' });
   });
   assert.equal(D.subclassName(), '');
   const whip = D.weaponAttacks().find(attack => attack.name === 'Whip');
@@ -169,6 +176,7 @@ test('proficiency and defense projections retain their grant sources', () => {
     state.character.origin.background.tool = 'Forgery Kit';
     state.character.origin.background.secondary = 'Train';
     state.character.origin.background.feat = 'Defence';
+    state.character.gear.armor.push({ id: 'leather', name: 'Leather Armor', itemType: 'armor', armorBase: 11, armorDex: 'full', location: 'worn' });
     state.classes.treasureHunter.choices.classSkills = ['Acrobatics', 'Arcana', 'Perception'];
     state.classes.treasureHunter.choices.expertise = 'Arcana';
   });
@@ -231,28 +239,34 @@ test('Builder saves one atomic canonical choice state', () => {
   assert.equal(notifications, 1, 'persistence does not emit a second render notification');
 });
 
-test('Builder starting-equipment choices create canonical weapons and ammunition once', () => {
+test('Builder uses a priced starting shop instead of materializing a fixed class loadout', () => {
   fresh();
   const payload = {
-    name: 'Equipped Hero', level: 1, species: '', speciesChoices: {}, background: {}, abilities: {}, hpAuto: true,
+    name: 'Shopping Hero', level: 1, species: '', speciesChoices: {}, background: {}, abilities: {}, hpAuto: true,
     classSkills: [], ancientLanguages: [], vehicles: [], weaponMasteries: [], manualSkills: {}, startingMelee: 'Rapier', startingRanged: 'Longbow'
   };
   C.saveBuilder(payload);
-  let state = S.get();
-  const rapier = D.inventory(state).find(item => item.startingChoice === 'starting-melee');
-  const longbow = D.inventory(state).find(item => item.startingChoice === 'starting-ranged');
-  const arrows = D.inventory(state).find(item => item.startingChoice === 'starting-ammunition');
-  assert.equal(rapier.damage, '1d8');
-  assert.equal(rapier.mastery, 'Vex');
-  assert.equal(longbow.rangeLabel, '150/600 ft.');
-  assert.equal(longbow.mastery, 'Slow');
-  assert.equal(arrows.name, 'Arrows');
-  assert.equal(arrows.quantity, 20);
-  C.saveBuilder(payload);
-  state = S.get();
-  assert.equal(D.inventory(state).filter(item => item.startingChoice === 'starting-melee').length, 1);
-  assert.equal(D.inventory(state).filter(item => item.startingChoice === 'starting-ranged').length, 1);
-  assert.equal(D.inventory(state).filter(item => item.startingChoice === 'starting-ammunition').length, 1);
+  assert.equal(D.inventory().length, 0, 'legacy starting choice fields are non-materializing compatibility data');
+
+  assert.equal(C.setStartingGearBudget(20).ok, true);
+  const backpackTemplate = Catalog.CURATED_FALLBACK.find(item => item.name === 'Backpack');
+  const whipTemplate = Catalog.CURATED_FALLBACK.find(item => item.name === 'Whip');
+  const bagPurchase = C.purchaseStartingItem(Catalog.cloneForInventory(backpackTemplate), Catalog.costInCp(backpackTemplate), { location: 'back' });
+  assert.equal(bagPurchase.ok, true);
+  const whipPurchase = C.purchaseStartingItem(Catalog.cloneForInventory(whipTemplate), Catalog.costInCp(whipTemplate), { containerId: bagPurchase.id });
+  assert.equal(whipPurchase.ok, true);
+  assert.equal(S.get().character.gear.inventory.find(item => item.id === whipPurchase.id).containerId, bagPurchase.id);
+  assert.equal(C.startingGearStatus().spentCp, 400);
+  assert.equal(C.setStartingGearBudget(3).reason, 'below-spent', 'budget cannot hide an overspend');
+  assert.equal(C.refundStartingItem(whipPurchase.id).ok, true);
+  assert.equal(C.startingGearStatus().remainingCp, 1800);
+
+  const finalized = C.finalizeStartingGear();
+  assert.equal(finalized.ok, true);
+  assert.equal(finalized.remainderCp, 1800);
+  assert.equal(C.startingGearStatus().remainingCp, 0);
+  assert.equal(S.get().character.gear.money.gp, 18);
+  assert.equal(C.refundStartingItem(bagPurchase.id).reason, 'finalized');
 });
 
 test('duplicate proficiency choices are detected by canonical requirements', () => {
@@ -283,13 +297,20 @@ test('origin mechanics are derived without inventing missing species mechanics',
   assert.equal(S.get().character.size, '', 'mechanics from the previously selected species do not leak');
 });
 
-test('editing an NPC preserves its favorite state', () => {
+test('NPC dossiers preserve favorite state and clean relationship references', () => {
   fresh();
-  const id = C.saveNpc({ name: 'Ally', favorite: true, notes: 'Original' });
-  C.saveNpc({ id, name: 'Ally', notes: 'Updated' });
-  const npc = S.get().campaign.npcs.find(entry => entry.id === id);
+  const contactId = C.saveNpc({ name: 'Contact', profession: 'Guide', nationality: 'Egyptian' });
+  const id = C.saveNpc({ name: 'Ally', favorite: true, notes: 'Original', relations: [{ npcId: contactId, type: 'trusted guide' }] });
+  C.saveNpc({ id, name: 'Ally', notes: 'Updated', relations: [{ npcId: contactId, type: 'trusted guide' }] });
+  let npc = S.get().campaign.npcs.find(entry => entry.id === id);
   assert.equal(npc.favorite, true);
   assert.equal(npc.notes, 'Updated');
+  assert.equal(npc.relations[0].npcId, contactId);
+  assert.ok(npc.createdAt);
+  assert.ok(npc.updatedAt);
+  C.deleteNpc(contactId);
+  npc = S.get().campaign.npcs.find(entry => entry.id === id);
+  assert.deepEqual(npc.relations, []);
 });
 
 test('equipping and editing an item drives canonical stats and Actions', () => {
@@ -322,18 +343,18 @@ test('attunement gates equipped item stats and actions without losing equip stat
   const item = D.inventory().find(entry => entry.id === 'attuned-charm');
   assert.equal(D.isItemEquipped(item), true);
   assert.equal(D.isItemActive(item), false);
-  assert.equal(D.armorClass(), 11);
+  assert.equal(D.armorClass(), 10);
   assert.equal(D.itemActions().length, 0);
   C.updateItem(item.id, { isAttuned: true });
   assert.equal(D.isItemActive(D.inventory().find(entry => entry.id === item.id)), true);
-  assert.equal(D.armorClass(), 13);
+  assert.equal(D.armorClass(), 12);
   assert.equal(D.itemActions()[0].name, 'Ward');
 });
 
-test('items move into Backpack and nested containers without cycles', () => {
+test('Backpack is a canonical container and nested containers reject cycles', () => {
   fresh(state => { state.character.gear.weapons = []; });
-  const bag = C.addItem({ name: 'Satchel', isContainer: true }, 'carried');
-  const box = C.addItem({ name: 'Small Box', isContainer: true }, 'backpack');
+  const bag = C.addItem({ name: 'Backpack', isContainer: true, itemType: 'container' }, 'back');
+  const box = C.addItem({ name: 'Small Box', isContainer: true, itemType: 'container' }, 'carried');
   const torch = C.addItem({ name: 'Torch' }, 'carried');
   assert.equal(C.moveItem(torch, { containerId: bag }).ok, true);
   assert.equal(S.get().character.gear.inventory.find(item => item.id === torch).containerId, bag);
@@ -346,15 +367,61 @@ test('items move into Backpack and nested containers without cycles', () => {
   assert.equal(S.get().character.gear.inventory.find(item => item.id === box).location, 'storage', 'moving a container propagates its effective location to descendants');
   assert.equal(S.get().character.gear.inventory.find(item => item.id === torch).location, 'storage');
   assert.equal(C.moveItem(bag, { containerId: box }).ok, false, 'container cycles are rejected');
-  assert.equal(C.moveItem(torch, { location: 'backpack', containerId: '' }).ok, true);
-  assert.equal(S.get().character.gear.inventory.find(item => item.id === torch).location, 'backpack');
+  assert.equal(S.ITEM_LOCATIONS.includes('backpack'), false, 'Backpack is never a pseudo-location');
 });
 
 test('money adjustments add, remove and clamp at zero', () => {
   fresh(state => { state.character.gear.money = { gp: 10, ep: 2, sp: 0, cp: 1, pp: 0 }; });
-  const applied = C.adjustMoney({ gp: 5, ep: -9, sp: 3, cp: -1 });
-  assert.deepEqual(applied, { gp: 5, ep: -2, sp: 3, cp: -1 });
-  assert.deepEqual(S.get().character.gear.money, { gp: 15, ep: 0, sp: 3, cp: 0, pp: 0 });
+  const applied = C.adjustMoney({ pp: 2, gp: 5, ep: -9, sp: 3, cp: -1 });
+  assert.deepEqual(applied, { pp: 2, gp: 5, ep: -2, sp: 3, cp: -1 });
+  assert.deepEqual(S.get().character.gear.money, { gp: 15, ep: 0, sp: 3, cp: 0, pp: 2 });
+});
+
+test('Short and Long Rest apply only the recovery choices selected', () => {
+  fresh(state => {
+    state.character.level = 11;
+    state.character.hp = { current: 5, max: 30, temp: 4, auto: false };
+    state.character.hitDice.d10.spent = 1;
+    state.character.exhaustion = 2;
+    state.classes.treasureHunter.coolUsed = 3;
+    state.classes.treasureHunter.featureUses = { 'not-dead-yet': 1, 'when-going-tough': 1 };
+  });
+  const short = C.rest('short', { hitDice: 2, rolls: [4, 10], cool: false, features: true, relics: false });
+  assert.equal(short.healing, 14);
+  assert.equal(short.hitDiceSpent, 2);
+  assert.equal(S.get().character.hp.current, 19);
+  assert.equal(S.get().classes.treasureHunter.coolUsed, 3, 'unchecked Cool recovery stays spent');
+  assert.equal(S.get().classes.treasureHunter.featureUses['not-dead-yet'], 0, 'Short Rest feature recovers');
+  assert.equal(S.get().classes.treasureHunter.featureUses['when-going-tough'], 1, 'Long Rest feature stays spent');
+
+  const long = C.rest('long', { hp: false, temp: false, recoverHitDice: false, exhaustion: false, cool: true, features: false, relics: false });
+  assert.equal(long.ok, true);
+  assert.equal(S.get().character.hp.current, 19);
+  assert.equal(S.get().character.hp.temp, 4);
+  assert.equal(S.get().character.hitDice.d10.spent, 3);
+  assert.equal(S.get().character.exhaustion, 2);
+  assert.equal(S.get().classes.treasureHunter.coolUsed, 0);
+});
+
+test('catalog exposes official prices, containers, tags and Luky firearm variants', () => {
+  const byName = name => Catalog.CURATED_FALLBACK.find(item => item.name === name);
+  assert.equal(Catalog.priceLabel(byName('Whip')), '2 GP');
+  assert.equal(Catalog.priceLabel(byName('Leather Armor')), '10 GP');
+  assert.equal(Catalog.priceLabel(byName("Explorer's Pack")), '10 GP');
+  assert.equal(byName('Backpack').isContainer, true);
+  assert.equal(Catalog.costInCp(byName('Firearm Bullets (10)')), 300);
+  assert.ok(byName('Rapier').tags.includes('finesse'));
+  assert.ok(byName('Longbow').tags.includes('martial'));
+  assert.ok(byName('Longbow').tags.includes('ranged'));
+
+  const firearms = Object.fromEntries(Catalog.HOME_BREW_ITEMS.map(item => [item.name, item]));
+  assert.deepEqual(Object.keys(firearms).sort(), ['Browning 1900', 'Derringer', 'Karabina', 'Mannlicher M 1903', 'Mauser M 98', 'Mondrogón M 1908', 'Parabella', 'Revolver'].sort());
+  assert.equal(firearms.Derringer.damage, '1d4');
+  assert.equal(Catalog.priceLabel(firearms.Derringer), '5 GP');
+  assert.equal(firearms.Parabella.mastery, 'Vex');
+  assert.equal(Catalog.priceLabel(firearms.Parabella), '250 GP');
+  assert.ok(firearms['Mauser M 98'].tags.includes('two-handed'));
+  assert.ok(firearms['Mondrogón M 1908'].tags.includes('homebrew'));
 });
 
 test('origin library exposes sourced traits while senses remain derived', () => {
@@ -405,8 +472,15 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
-  assert.match(index, /service-worker\.js\?v=9\.2\.1/);
-  assert.match(app, /\['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
+  assert.match(index, /service-worker\.js\?v=9\.3\.0/);
+  assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
+  assert.match(index, /id="bioPage"/);
+  assert.match(index, /id="builderBtn"/);
+  assert.match(index, /class="icon-btn builder-anvil"/);
+  assert.equal(index.includes('id="editBtn"'), false, 'top bar has one canonical Builder entry point');
+  assert.match(app, /\['pp', 'PP', 'P'\], \['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
+  assert.match(app, /'npcsPage', 'bioPage'/);
+  assert.equal(app.includes('data-action-filter'), false, 'Actions has no persistent horizontal filter rail');
   const npcRenderer = app.slice(app.indexOf('function renderNpcs()'), app.indexOf('function renderAll()'));
   assert.equal(npcRenderer.includes('npcDeleteBtn'), false, 'NPC list renderer must not expose deletion');
   const css = fs.readFileSync(path.join(root, 'css/v7s.css'), 'utf8');
@@ -417,6 +491,10 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.ability-grid\{grid-template-columns:repeat\(3/);
   assert.match(app, /class="ability ability-v9"/);
   assert.match(app, /data-npc-image-storage/);
+  assert.match(app, /data-npc-sort="\$\{key\}"/);
+  assert.match(app, /data-starting-remove/);
+  assert.match(app, /id="hpTempSet"/);
+  assert.match(app, /class="action-cool-spend"/);
   assert.match(app, /parentDialog && button\.value === 'cancel'/, 'dialog Cancel buttons close without submitting their forms');
   assert.match(app, /money\$\{id\}Delta/);
   assert.match(app, /data-item-equip/);
@@ -424,4 +502,11 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /Proficiencies & Masteries/);
   assert.match(app, /ON HIT · \$\{esc\(record\.mastery\)\}/);
   assert.equal(app.includes("section('Origin'"), false, 'passive origin cards belong on Features, not Character');
+  assert.match(v9Css, /\.row-main-wrap\.has-cool-cost/);
+  assert.match(v9Css, /\.hp-wheel-marker/);
+  assert.match(v9Css, /\.npc-card-main/);
+  assert.match(v9Css, /scrollbar-width:none/);
+  const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
+  assert.match(worker, /character-sheet-v9-ux-7/);
+  assert.match(worker, /app-v9\.js\?v=9\.3\.0/);
 });

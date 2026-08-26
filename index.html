@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="css/enhancements-v7s.css">
   <link rel="stylesheet" href="css/compact-ux-v7s.css">
   <link rel="stylesheet" href="css/gameplay-polish-v7s.css">
-  <link rel="stylesheet" href="css/v9.css?v=9.2.1">
+  <link rel="stylesheet" href="css/v9.css?v=9.3.0">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -22,7 +22,9 @@
       <div class="top-actions">
         <button id="charactersBtn" class="icon-btn" aria-label="Characters">♟</button>
         <button id="searchBtn" class="icon-btn" aria-label="Search">⌕</button>
-        <button id="editBtn" class="icon-btn" aria-label="Quick edit character">✎</button>
+        <button id="builderBtn" class="icon-btn builder-anvil" aria-label="Open Character Builder" title="Character Builder">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h12c1.2 0 2.4.4 3.3 1.2L21 8v2h-4.2c-.9 0-1.7.5-2.1 1.3L13.8 13H8.2l-.9-1.7A2.4 2.4 0 0 0 5.2 10H3V5Zm6 9h6v3h2v2H7v-2h2v-3Z"/></svg>
+        </button>
       </div>
     </header>
 
@@ -40,12 +42,13 @@
       <section class="sheet-page"><div id="relicsPage" class="page-inner"></div></section>
       <section class="sheet-page"><div id="gearPage" class="page-inner"></div></section>
       <section class="sheet-page"><div id="npcsPage" class="page-inner"></div></section>
+      <section class="sheet-page"><div id="bioPage" class="page-inner"></div></section>
     </main>
 
     <footer class="mini-hud">
       <button data-open-hp><span>HP</span><b id="hudHp">0/0</b></button>
       <button data-stat-detail="ac"><span>AC</span><b id="hudAc">10</b></button>
-      <button><span>COOL</span><b id="hudCool">0/0</b></button>
+      <button data-jump-page="1" aria-label="Open Actions and Cool Points"><span>COOL</span><b id="hudCool">0/0</b></button>
     </footer>
   </div>
 
@@ -147,16 +150,16 @@
   <script src="js/classes/treasure-hunter/data-v7s.js"></script>
   <script src="js/classes/treasure-hunter/relics-v7s.js"></script>
   <script src="js/classes/treasure-hunter/choices-v7s.js"></script>
-  <script src="js/classes/treasure-hunter/content-v9.js?v=9.2.1"></script>
-  <script src="js/core/state-v9.js?v=9.2.1"></script>
-  <script src="js/core/rules-2024.js?v=9.2.1"></script>
-  <script src="js/core/origin-v9.js?v=9.2.1"></script>
-  <script src="js/core/derived-v9.js?v=9.2.1"></script>
-  <script src="js/core/commands-v9.js?v=9.2.1"></script>
-  <script src="js/core/roster-v9.js?v=9.2.1"></script>
-  <script src="js/core/catalog-srd.js"></script>
-  <script src="js/ui/portrait-cropper.js"></script>
-  <script src="js/ui/app-v9.js?v=9.2.1"></script>
-  <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js?v=9.2.1').catch(()=>{});</script>
+  <script src="js/classes/treasure-hunter/content-v9.js?v=9.3.0"></script>
+  <script src="js/core/state-v9.js?v=9.3.0"></script>
+  <script src="js/core/rules-2024.js?v=9.3.0"></script>
+  <script src="js/core/origin-v9.js?v=9.3.0"></script>
+  <script src="js/core/derived-v9.js?v=9.3.0"></script>
+  <script src="js/core/commands-v9.js?v=9.3.0"></script>
+  <script src="js/core/roster-v9.js?v=9.3.0"></script>
+  <script src="js/core/catalog-srd.js?v=9.3.0"></script>
+  <script src="js/ui/portrait-cropper.js?v=9.3.0"></script>
+  <script src="js/ui/app-v9.js?v=9.3.0"></script>
+  <script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./service-worker.js?v=9.3.0').catch(()=>{});</script>
 </body>
 </html>

@@ -528,10 +528,10 @@
       const abilityKey = weaponAbility(item, source);
       const enhancement = weaponEnhancement(item);
       const raw = item.raw || {};
-      const dice = item.damage || raw.damage?.damage_dice || '—';
+      const canonicalName = canonicalWeaponName(item);
+      const dice = String(canonicalName).toLowerCase() === 'whip' && level(source) >= 1 ? '1d6' : item.damage || raw.damage?.damage_dice || '—';
       const type = item.damageType || raw.damage?.damage_type?.name || '';
       const damageModifier = mod(abilityKey, source) + weaponDamageBonus(item);
-      const canonicalName = canonicalWeaponName(item);
       const masteryProperty = item.mastery || raw.mastery?.name || raw.mastery || Rules.weaponMastery(canonicalName) || '';
       const selectedMasteries = choices(source).weaponMasteries || [];
       const masterySources = [];
@@ -579,8 +579,6 @@
       }
     }
     if (level(source) >= 1 && classSkillProficiencies(source).length !== 3) missing.unshift('Treasure Hunter: 3 class skills');
-    if (level(source) >= 1 && !String(selected.startingMelee || '').trim()) missing.push('Treasure Hunter: starting Finesse weapon');
-    if (level(source) >= 1 && !String(selected.startingRanged || '').trim()) missing.push('Treasure Hunter: starting ranged weapon or firearm');
     const background = Origin.background(source);
     const proficiencyChoices = [
       ...(source.character.origin?.speciesChoices?.skills || []), ...(background.skills || []),

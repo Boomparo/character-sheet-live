@@ -3,10 +3,10 @@
 
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 12;
-  const APP_VERSION = '9.2.1-sheet-ux';
+  const SCHEMA_VERSION = 13;
+  const APP_VERSION = '9.3.0-expedition-ux';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
-  const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'backpack', 'back', 'ground', 'storage'];
+  const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
   const CHOICE_ARRAYS = [
     'classSkills', 'ancientLanguages', 'vehicles', 'weaponMasteries',
     'feat4', 'feat8', 'feat12', 'feat16', 'epicBoon19'
@@ -50,13 +50,8 @@
         },
         gear: {
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
-          weapons: [{ id: 'weapon-whip', name: 'Whip', attackAbility: 'DEX', damage: '1d6', damageType: 'Slashing', mastery: 'Slow', location: 'equipped' }],
-          armor: [{ id: 'armor-leather', name: 'Leather Armor', itemType: 'armor', armorBase: 11, armorDex: 'full', location: 'worn', quantity: 1 }],
-          inventory: [
-            { id: 'item-explorers-pack', name: "Explorer's Pack", itemType: 'container', isContainer: true, location: 'back', quantity: 1 },
-            { id: 'item-thieves-tools', name: "Thieves' Tools", itemType: 'item', location: 'back', containerId: 'item-explorers-pack', quantity: 1 },
-            { id: 'item-navigators-tools', name: "Navigator's Tools", itemType: 'item', location: 'back', containerId: 'item-explorers-pack', quantity: 1 }
-          ]
+          weapons: [], armor: [], inventory: [],
+          starting: { budgetGp: 0, finalized: false, remainderCp: 0, legacy: false }
         },
         origin: {
           species: '',
@@ -86,6 +81,7 @@
       campaign: { npcs: [], notes: [], tarot: {} },
       ui: {
         page: 0, socialTab: 'npcs', featureView: 'available', featureFilter: 'all', actionFilter: 'all',
+        npcSort: 'alphabetical',
         favoriteFeatures: [], favoriteActions: [], openFeatures: [], openActions: [], openRelics: [], openItems: []
       }
     };
@@ -114,17 +110,17 @@
     return id;
   }
 
-  function normalizeItems(items, prefix) {
-    const seen = new Set();
+  function normalizeItems(items, prefix, seen = new Set()) {
     return array(items).filter(item => item != null).map((source, index) => {
       const item = typeof source === 'string' ? { name: source } : source;
       item.id = stableId(prefix, item.id || item.uid, index, seen);
       delete item.uid;
       item.name = String(item.name || 'Item');
-      item.location = ITEM_LOCATIONS.includes(item.location) ? item.location : (item.equipped || item.isEquipped ? 'equipped' : item.worn || item.isWorn ? 'worn' : 'backpack');
+      item.location = [...ITEM_LOCATIONS, 'backpack'].includes(item.location) ? item.location : (item.equipped || item.isEquipped ? 'equipped' : item.worn || item.isWorn ? 'worn' : 'carried');
       item.quantity = Math.max(1, Math.floor(number(item.quantity, 1)));
       item.modifiers = array(item.modifiers).filter(modifier => modifier && typeof modifier === 'object');
-      item.isContainer = typeof item.isContainer === 'boolean' ? item.isContainer : /\b(backpack|pack|bag|sack|pouch|chest|case)\b/i.test(item.name);
+      const canonicalPack = /^(backpack|explorer['’]s pack)$/i.test(item.name.trim());
+      item.isContainer = canonicalPack || (typeof item.isContainer === 'boolean' ? item.isContainer : /\b(backpack|pack|bag|sack|pouch|chest|case)\b/i.test(item.name));
       const rawArmor = String(item.raw?.armor_category || '').toLowerCase();
       const inferredType = item.isContainer ? 'container' : item.raw?.weapon_category || item.raw?.damage?.damage_dice ? 'weapon' : rawArmor === 'shield' ? 'shield' : rawArmor ? 'armor' : 'item';
       item.itemType = ['item', 'weapon', 'armor', 'shield', 'container'].includes(item.itemType) ? item.itemType : inferredType;
@@ -139,19 +135,25 @@
     });
   }
 
-  function ensureFixedStartingEquipment(character) {
+  function migrateLegacyBackpack(character) {
     const gear = character.gear;
     const all = () => [...gear.weapons, ...gear.armor, ...gear.inventory];
-    const findByName = name => all().find(item => String(item.name || '').toLowerCase() === name.toLowerCase());
-    if (!findByName('Whip')) gear.weapons.push({ id: 'weapon-whip', name: 'Whip', itemType: 'weapon', attackAbility: 'DEX', damage: '1d6', damageType: 'Slashing', mastery: 'Slow', location: 'equipped', quantity: 1, modifiers: [], containerId: '' });
-    if (!findByName('Leather Armor')) gear.armor.push({ id: 'armor-leather', name: 'Leather Armor', itemType: 'armor', armorBase: 11, armorDex: 'full', location: 'worn', quantity: 1, modifiers: [], containerId: '' });
-    let pack = findByName("Explorer's Pack") || findByName('Explorer’s Pack');
-    if (!pack) {
-      pack = { id: 'item-explorers-pack', name: "Explorer's Pack", itemType: 'container', isContainer: true, location: 'back', quantity: 1, modifiers: [], containerId: '' };
-      gear.inventory.push(pack);
+    const legacyItems = all().filter(item => item.location === 'backpack');
+    if (!legacyItems.length) return;
+    let backpack = all().find(item => /^backpack$/i.test(String(item.name || '').trim()) && item.isContainer);
+    if (!backpack) {
+      backpack = {
+        id: 'item-backpack', name: 'Backpack', itemType: 'container', isContainer: true,
+        location: 'back', quantity: 1, modifiers: [], containerId: '', capacity: '30 lb.',
+        cost: { quantity: 2, unit: 'gp' }, weight: 5, source: 'SRD 5.2.1'
+      };
+      gear.inventory.push(backpack);
     }
-    for (const [id, name] of [['item-thieves-tools', "Thieves' Tools"], ['item-navigators-tools', "Navigator's Tools"]]) {
-      if (!findByName(name)) gear.inventory.push({ id, name, itemType: 'item', location: pack.location || 'back', containerId: pack.isContainer ? pack.id : '', quantity: 1, modifiers: [] });
+    backpack.location = ITEM_LOCATIONS.includes(backpack.location) ? backpack.location : 'back';
+    for (const item of legacyItems) {
+      if (item.id === backpack.id) continue;
+      if (!item.containerId) item.containerId = backpack.id;
+      item.location = backpack.location;
     }
   }
 
@@ -222,10 +224,11 @@
     }
     c.customActions = normalizeItems(c.customActions, 'action');
     c.spells = normalizeItems(c.spells, 'spell');
-    c.gear.inventory = normalizeItems(c.gear.inventory, 'item');
-    c.gear.weapons = normalizeItems(c.gear.weapons, 'weapon');
-    c.gear.armor = normalizeItems(c.gear.armor, 'armor');
-    if (sourceSchema < 12) ensureFixedStartingEquipment(c);
+    const gearIds = new Set();
+    c.gear.inventory = normalizeItems(c.gear.inventory, 'item', gearIds);
+    c.gear.weapons = normalizeItems(c.gear.weapons, 'weapon', gearIds);
+    c.gear.armor = normalizeItems(c.gear.armor, 'armor', gearIds);
+    migrateLegacyBackpack(c);
     const allGear = [...c.gear.inventory, ...c.gear.weapons, ...c.gear.armor];
     const gearById = new Map(allGear.map(item => [item.id, item]));
     for (const item of allGear) {
@@ -240,6 +243,15 @@
       if (cursor?.containerId && visited.has(cursor.containerId)) item.containerId = '';
     }
     for (const coin of ['gp', 'ep', 'sp', 'cp', 'pp']) c.gear.money[coin] = Math.max(0, Math.floor(number(c.gear.money[coin], 0)));
+    c.gear.starting = c.gear.starting && typeof c.gear.starting === 'object' ? c.gear.starting : {};
+    c.gear.starting.budgetGp = Math.max(0, Math.floor(number(c.gear.starting.budgetGp, 0)));
+    c.gear.starting.finalized = !!c.gear.starting.finalized;
+    c.gear.starting.remainderCp = Math.max(0, Math.floor(number(c.gear.starting.remainderCp, 0)));
+    c.gear.starting.legacy = !!c.gear.starting.legacy;
+    if (sourceSchema < 13) {
+      c.gear.starting.finalized = true;
+      c.gear.starting.legacy = true;
+    }
 
     const validModes = new Set(['normal', 'advantage', 'disadvantage']);
     c.rollModes.initiative = validModes.has(c.rollModes.initiative) ? c.rollModes.initiative : 'normal';
@@ -305,13 +317,33 @@
       npc = npc && typeof npc === 'object' ? npc : { name: String(npc || 'NPC') };
       npc.id = stableId('npc', npc.id, index, npcIds);
       npc.name = String(npc.name || 'NPC');
+      npc.profession = String(npc.profession || npc.tag || '');
+      npc.nationality = String(npc.nationality || '');
+      npc.location = String(npc.location || '');
+      npc.notes = String(npc.notes || '');
+      npc.image = String(npc.image || '');
       npc.favorite = !!npc.favorite;
+      npc.createdAt = String(npc.createdAt || npc.addedAt || new Date(index * 1000).toISOString());
+      npc.updatedAt = String(npc.updatedAt || npc.createdAt);
+      npc.relations = array(npc.relations).map(relation => relation && typeof relation === 'object' ? {
+        npcId: String(relation.npcId || relation.id || ''), type: String(relation.type || relation.label || '')
+      } : { npcId: String(relation || ''), type: '' });
       return npc;
     });
+    const validNpcIds = new Set(s.campaign.npcs.map(npc => npc.id));
+    for (const npc of s.campaign.npcs) {
+      const seenRelations = new Set();
+      npc.relations = npc.relations.filter(relation => {
+        if (!validNpcIds.has(relation.npcId) || relation.npcId === npc.id || seenRelations.has(relation.npcId)) return false;
+        seenRelations.add(relation.npcId);
+        return true;
+      });
+    }
 
     const ui = s.ui;
-    ui.page = clamp(ui.page, 0, 6);
+    ui.page = clamp(ui.page, 0, 7);
     ui.socialTab = ui.socialTab === 'bio' ? 'bio' : 'npcs';
+    ui.npcSort = ['alphabetical', 'chronological', 'favorites'].includes(ui.npcSort) ? ui.npcSort : 'alphabetical';
     ui.featureView = ui.featureView === 'progression' ? 'progression' : 'available';
     ui.featureFilter = ['all', 'active', 'passive', 'subclass'].includes(ui.featureFilter) ? ui.featureFilter : 'all';
     ui.actionFilter = ['all', 'attack', 'action', 'bonus', 'reaction', 'other'].includes(ui.actionFilter) ? ui.actionFilter : 'all';

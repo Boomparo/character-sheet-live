@@ -105,28 +105,62 @@
     }, 'luck:adjust');
   }
 
-  function rest(kind) {
+  function rest(kind, options = {}) {
     const long = kind === 'long' || kind === 'LR';
+    const source = S.get();
+    if (number(source.character.hp.current) <= 0) return { ok: false, reason: 'zero-hp' };
+    const config = {
+      hitDice: Math.max(0, Math.floor(number(options.hitDice, 0))),
+      hp: options.hp !== false, temp: options.temp !== false, recoverHitDice: options.recoverHitDice !== false,
+      cool: options.cool !== false, features: options.features !== false, relics: options.relics !== false,
+      exhaustion: options.exhaustion !== false,
+      rolls: Array.isArray(options.rolls) ? options.rolls : []
+    };
+    const result = { ok: true, kind: long ? 'long' : 'short', healing: 0, rolls: [], hitDiceSpent: 0, hitDiceRecovered: 0 };
     update(state => {
       const th = state.classes.treasureHunter;
-      th.coolUsed = 0;
-      for (const [id] of Object.entries(th.featureUses || {})) {
-        const feature = T.features.find(item => item.id === id);
-        if (feature && (long || feature.recovery === 'SR')) th.featureUses[id] = 0;
+      if (config.cool) th.coolUsed = 0;
+      if (config.features) {
+        for (const [id] of Object.entries(th.featureUses || {})) {
+          const feature = T.features.find(item => item.id === id);
+          if (feature && (long || feature.recovery === 'SR')) th.featureUses[id] = 0;
+        }
       }
-      for (const entry of th.relics || []) {
-        const relic = Relics.find(item => item.id === entry.relicId);
-        if (relic && (long || relic.recovery === 'SR')) entry.used = 0;
+      if (config.relics) {
+        for (const entry of th.relics || []) {
+          const relic = Relics.find(item => item.id === entry.relicId);
+          if (relic && (long || relic.recovery === 'SR')) entry.used = 0;
+        }
       }
       if (long) {
-        state.character.hp.current = D.hpMax(state);
-        state.character.hp.temp = 0;
-        state.character.exhaustion = Math.max(0, number(state.character.exhaustion) - 1);
-        state.character.hitDice.d10.spent = Math.max(0, number(state.character.hitDice.d10.spent) - Math.max(1, Math.ceil(D.level(state) / 2)));
+        if (config.hp) state.character.hp.current = D.hpMax(state);
+        if (config.temp) state.character.hp.temp = 0;
+        if (config.exhaustion) state.character.exhaustion = Math.max(0, number(state.character.exhaustion) - 1);
+        if (config.recoverHitDice) {
+          const before = number(state.character.hitDice.d10.spent);
+          state.character.hitDice.d10.spent = Math.max(0, before - Math.max(1, Math.ceil(D.level(state) / 2)));
+          result.hitDiceRecovered = before - state.character.hitDice.d10.spent;
+        }
         state.character.deathSaves = { successes: 0, failures: 0 };
         state.character.origin.background.luckUsed = 0;
+      } else if (config.hitDice) {
+        const hitDice = state.character.hitDice.d10;
+        const available = Math.max(0, D.level(state) - number(hitDice.spent));
+        const count = Math.min(available, config.hitDice);
+        const con = D.mod('CON', state);
+        for (let index = 0; index < count; index += 1) {
+          const die = clamp(config.rolls[index] ?? (1 + Math.floor(Math.random() * 10)), 1, 10);
+          const gain = Math.max(1, die + con);
+          result.rolls.push({ die, con, gain });
+          result.healing += gain;
+        }
+        result.hitDiceSpent = count;
+        hitDice.spent = number(hitDice.spent) + count;
+        state.character.hp.current = Math.min(D.hpMax(state), number(state.character.hp.current) + result.healing);
       }
     }, long ? 'rest:long' : 'rest:short');
+    result.current = S.get().character.hp.current;
+    return result;
   }
 
   function toggleFeatureUse(featureId, delta) {
@@ -277,48 +311,6 @@
     return [...state.character.gear.weapons, ...state.character.gear.armor, ...state.character.gear.inventory];
   }
 
-  function syncStartingWeapon(state, slot, name, previousName) {
-    const gear = state.character.gear;
-    const marker = `starting-${slot}`;
-    let item = allGearItems(state).find(candidate => candidate.startingChoice === marker);
-    if (!name) {
-      if (item) delete item.startingChoice;
-      return;
-    }
-    if (item && String(previousName || '').toLowerCase() === String(name).toLowerCase()) return;
-    const profile = Rules.startingWeaponProfile(name);
-    if (!profile) return;
-    if (!item) item = allGearItems(state).find(candidate => String(candidate.name || '').toLowerCase() === String(profile.name).toLowerCase());
-    if (!item) {
-      item = { id: S.uid(`weapon-${slot}`), location: 'backpack', quantity: 1, containerId: '', modifiers: [] };
-      gear.weapons.push(item);
-    }
-    const identity = { id: item.id, location: item.location || 'backpack', quantity: Math.max(1, number(item.quantity, 1)), containerId: item.containerId || '', modifiers: Array.isArray(item.modifiers) ? item.modifiers : [] };
-    delete item.raw;
-    Object.assign(item, profile, identity, { source: 'Treasure Hunter starting equipment', startingChoice: marker, masteryWeapon: profile.name });
-  }
-
-  function syncStartingAmmunition(state, weaponName, previousName) {
-    const gear = state.character.gear;
-    let ammunition = gear.inventory.find(item => item.startingChoice === 'starting-ammunition');
-    if (!weaponName) {
-      if (ammunition) delete ammunition.startingChoice;
-      return;
-    }
-    if (ammunition && String(previousName || '').toLowerCase() === String(weaponName).toLowerCase()) return;
-    const profile = Rules.startingWeaponProfile(weaponName);
-    if (!profile?.ammunition) return;
-    const pack = allGearItems(state).find(item => item.isContainer && /explorer['’]s pack/i.test(item.name || ''));
-    if (!ammunition) {
-      ammunition = { id: S.uid('starting-ammo'), itemType: 'item', location: pack?.location || 'backpack', containerId: pack?.id || '', modifiers: [] };
-      gear.inventory.push(ammunition);
-    }
-    Object.assign(ammunition, {
-      name: profile.ammunition, itemType: 'item', quantity: 20, source: 'Treasure Hunter starting equipment',
-      startingChoice: 'starting-ammunition', location: pack?.location || ammunition.location || 'backpack', containerId: pack?.id || ''
-    });
-  }
-
   function saveBuilder(payload) {
     const source = S.get();
     const oldMax = D.hpMax(source);
@@ -364,13 +356,6 @@
       th.choices.vehicles = takeUnique(payload.vehicles, 2);
       th.choices.expertise = String(payload.expertise || '');
       th.choices.weaponMasteries = unique(payload.weaponMasteries).filter(name => String(name).toLowerCase() !== 'whip').slice(0, 2);
-      const previousStartingMelee = th.choices.startingMelee;
-      const previousStartingRanged = th.choices.startingRanged;
-      th.choices.startingMelee = String(payload.startingMelee || '');
-      th.choices.startingRanged = String(payload.startingRanged || '');
-      syncStartingWeapon(state, 'melee', th.choices.startingMelee, previousStartingMelee);
-      syncStartingWeapon(state, 'ranged', th.choices.startingRanged, previousStartingRanged);
-      syncStartingAmmunition(state, th.choices.startingRanged, previousStartingRanged);
       if (payload.manualSkills && typeof payload.manualSkills === 'object') {
         for (const skill of Object.keys(D.SKILLS)) delete c.skills[skill];
         for (const [skill, status] of Object.entries(payload.manualSkills)) {
@@ -412,10 +397,10 @@
     }, 'character:save');
   }
 
-  function addItem(item, location = 'backpack') {
+  function addItem(item, location = 'carried') {
     const next = S.clone(item || {});
     next.id = S.uid('item');
-    next.location = S.ITEM_LOCATIONS.includes(location) ? location : 'backpack';
+    next.location = S.ITEM_LOCATIONS.includes(location) ? location : 'carried';
     next.quantity = Math.max(1, number(next.quantity, 1));
     next.containerId = '';
     update(state => { state.character.gear.inventory.push(next); }, 'item:add');
@@ -460,7 +445,7 @@
         if (!validContainerMove(state, id, containerId)) { result = { ok: false, reason: 'container' }; return; }
         const parent = findItem(state, containerId);
         item.containerId = containerId;
-        item.location = S.ITEM_LOCATIONS.includes(parent.location) ? parent.location : 'backpack';
+        item.location = S.ITEM_LOCATIONS.includes(parent.location) ? parent.location : 'carried';
       } else {
         item.containerId = '';
         if (S.ITEM_LOCATIONS.includes(destination.location)) item.location = destination.location;
@@ -479,7 +464,7 @@
       if (equipped) {
         if (item.isContainer) { result = { ok: false, reason: 'container' }; return; }
         if (!['equipped', 'worn'].includes(item.location) || item.containerId) {
-          item.stowedLocation = item.location || 'backpack';
+          item.stowedLocation = item.location || 'carried';
           item.stowedContainerId = item.containerId || '';
         }
         item.containerId = '';
@@ -490,7 +475,7 @@
           item.containerId = storedContainer.id;
           item.location = storedContainer.location;
         } else {
-          const fallback = S.ITEM_LOCATIONS.includes(item.stowedLocation) && !['equipped', 'worn'].includes(item.stowedLocation) ? item.stowedLocation : 'backpack';
+          const fallback = S.ITEM_LOCATIONS.includes(item.stowedLocation) && !['equipped', 'worn'].includes(item.stowedLocation) ? item.stowedLocation : 'carried';
           item.location = fallback;
           item.containerId = '';
         }
@@ -534,23 +519,96 @@
       for (const item of [...gear.inventory, ...gear.weapons, ...gear.armor]) {
         if (item.containerId === id) {
           item.containerId = '';
-          item.location = 'backpack';
+          item.location = 'carried';
           if (item.isContainer) syncContainedLocations(state, item.id, item.location);
         }
       }
     }, 'item:remove');
   }
 
+  function startingGearStatus(value = S.get()) {
+    const source = value || S.get();
+    const setup = source.character.gear.starting || {};
+    const spentCp = allGearItems(source).reduce((sum, item) => sum + (item.startingPurchase ? Math.max(0, Math.floor(number(item.startingCostCp))) : 0), 0);
+    const budgetCp = Math.max(0, Math.floor(number(setup.budgetGp))) * 100;
+    const finalized = !!setup.finalized;
+    return {
+      budgetGp: Math.floor(budgetCp / 100), budgetCp, spentCp,
+      remainingCp: finalized ? 0 : Math.max(0, budgetCp - spentCp),
+      overspentCp: Math.max(0, spentCp - budgetCp),
+      remainderCp: Math.max(0, Math.floor(number(setup.remainderCp))),
+      finalized, legacy: !!setup.legacy
+    };
+  }
+
+  function setStartingGearBudget(gp) {
+    if (S.get().character.gear.starting?.finalized) return { ok: false, reason: 'finalized' };
+    const nextBudgetGp = Math.max(0, Math.floor(number(gp)));
+    if (nextBudgetGp * 100 < startingGearStatus().spentCp) return { ok: false, reason: 'below-spent', ...startingGearStatus() };
+    update(state => { state.character.gear.starting.budgetGp = nextBudgetGp; }, 'starting-gear:budget');
+    return { ok: true, ...startingGearStatus() };
+  }
+
+  function purchaseStartingItem(item, costCp, destination = {}) {
+    const price = Math.max(0, Math.floor(number(costCp)));
+    const status = startingGearStatus();
+    if (status.finalized) return { ok: false, reason: 'finalized' };
+    if (status.spentCp + price > status.budgetCp) return { ok: false, reason: 'budget' };
+    let id = '';
+    update(state => {
+      const next = S.clone(item || {});
+      id = S.uid('starting-item');
+      Object.assign(next, { id, quantity: Math.max(1, number(next.quantity, 1)), startingPurchase: true, startingCostCp: price, containerId: '', location: 'carried' });
+      state.character.gear.inventory.push(next);
+      const containerId = String(destination.containerId || '');
+      if (containerId && validContainerMove(state, id, containerId)) {
+        const parent = findItem(state, containerId);
+        next.containerId = containerId;
+        next.location = parent.location;
+      } else if (S.ITEM_LOCATIONS.includes(destination.location)) {
+        next.location = destination.location;
+      }
+    }, 'starting-gear:purchase');
+    return { ok: true, id, ...startingGearStatus() };
+  }
+
+  function finalizeStartingGear() {
+    const status = startingGearStatus();
+    if (status.finalized) return { ok: false, reason: 'finalized' };
+    if (!status.budgetCp) return { ok: false, reason: 'budget' };
+    if (status.overspentCp) return { ok: false, reason: 'overspent', ...status };
+    update(state => {
+      const setup = state.character.gear.starting;
+      let remainder = startingGearStatus(state).remainingCp;
+      setup.remainderCp = remainder;
+      setup.finalized = true;
+      state.character.gear.money.gp += Math.floor(remainder / 100);
+      remainder %= 100;
+      state.character.gear.money.sp += Math.floor(remainder / 10);
+      state.character.gear.money.cp += remainder % 10;
+    }, 'starting-gear:finalize');
+    return { ok: true, ...startingGearStatus() };
+  }
+
+  function refundStartingItem(id) {
+    const source = S.get();
+    if (source.character.gear.starting?.finalized) return { ok: false, reason: 'finalized' };
+    const item = findItem(source, id);
+    if (!item?.startingPurchase) return { ok: false, reason: 'not-purchase' };
+    removeItem(id);
+    return { ok: true, ...startingGearStatus() };
+  }
+
   function setMoney(values) {
     update(state => {
-      for (const coin of ['gp', 'ep', 'sp', 'cp']) state.character.gear.money[coin] = Math.max(0, Math.floor(number(values[coin])));
+      for (const coin of ['pp', 'gp', 'ep', 'sp', 'cp']) state.character.gear.money[coin] = Math.max(0, Math.floor(number(values[coin])));
     }, 'money:set');
   }
 
   function adjustMoney(values) {
     const applied = {};
     update(state => {
-      for (const coin of ['gp', 'ep', 'sp', 'cp']) {
+      for (const coin of ['pp', 'gp', 'ep', 'sp', 'cp']) {
         const before = Math.max(0, Math.floor(number(state.character.gear.money[coin])));
         const after = Math.max(0, before + Math.trunc(number(values?.[coin])));
         state.character.gear.money[coin] = after;
@@ -594,10 +652,13 @@
     let id = payload.id || '';
     update(state => {
       const current = state.campaign.npcs.find(npc => npc.id === id);
+      const now = new Date().toISOString();
       const next = {
-        name: String(payload.name || 'NPC'), tag: String(payload.tag || ''), location: String(payload.location || ''),
-        notes: String(payload.notes || ''), image: payload.image || '',
-        favorite: payload.favorite == null ? !!current?.favorite : !!payload.favorite
+        name: String(payload.name || 'NPC'), profession: String(payload.profession || payload.tag || ''),
+        nationality: String(payload.nationality || ''), location: String(payload.location || ''),
+        notes: String(payload.notes || ''), image: payload.image || '', relations: Array.isArray(payload.relations) ? S.clone(payload.relations) : (current?.relations || []),
+        favorite: payload.favorite == null ? !!current?.favorite : !!payload.favorite,
+        createdAt: current?.createdAt || now, updatedAt: now
       };
       if (current) Object.assign(current, next);
       else { id = S.uid('npc'); state.campaign.npcs.push({ id, ...next }); }
@@ -606,7 +667,10 @@
   }
 
   function deleteNpc(id) {
-    update(state => { state.campaign.npcs = state.campaign.npcs.filter(npc => npc.id !== id); }, 'npc:delete');
+    update(state => {
+      state.campaign.npcs = state.campaign.npcs.filter(npc => npc.id !== id);
+      for (const npc of state.campaign.npcs) npc.relations = (npc.relations || []).filter(relation => relation.npcId !== id);
+    }, 'npc:delete');
   }
 
   function toggleNpcFavorite(id) {
@@ -624,7 +688,8 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, moveItem, setItemEquipped, removeItem, setMoney, adjustMoney, addCustomAction, removeCustomAction,
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
+    setMoney, adjustMoney, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
   };
 })();
