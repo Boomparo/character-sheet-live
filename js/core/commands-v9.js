@@ -546,6 +546,67 @@
     return { ok: true, type: summary.type, itemId: stack.item.id, remaining: Math.max(0, summary.total - 1) };
   }
 
+  function executeAction(payload = {}) {
+    const source = S.get();
+    const cost = Math.max(0, Math.floor(number(payload.cost)));
+    const coolMax = T.coolTotal(D.level(source));
+    const coolLeft = Math.max(0, coolMax - number(source.classes.treasureHunter.coolUsed));
+    if (cost > coolLeft) return { ok: false, reason: 'cool', available: coolLeft };
+    const featureId = String(payload.featureId || '');
+    const feature = featureId ? T.features.find(entry => entry.id === featureId) : null;
+    const featureMax = Math.max(0, number(payload.uses || feature?.uses));
+    const featureUsed = Math.max(0, number(source.classes.treasureHunter.featureUses?.[featureId]));
+    if (featureId && featureMax && featureUsed >= featureMax) return { ok: false, reason: 'uses', available: 0 };
+    const relicInstanceId = String(payload.relicInstanceId || '');
+    const relicEntry = relicInstanceId ? source.classes.treasureHunter.relics.find(entry => entry.instanceId === relicInstanceId) : null;
+    const relicMax = relicEntry ? D.relicMax(relicEntry, source) : 0;
+    if (relicInstanceId && (!relicEntry || number(relicEntry.used) >= relicMax)) return { ok: false, reason: 'charges', available: 0 };
+    let ammo = null;
+    if (payload.spendAmmo && payload.weaponId) {
+      const weapon = D.weaponAttacks(source, { includeUnequipped: true }).find(attack => attack.id === payload.weaponId);
+      if (!weapon?.firearm) return { ok: false, reason: 'weapon' };
+      const summary = D.ammunitionSummaryForWeapon(weapon, source);
+      const stack = summary.entries.find(entry => entry.count > 0);
+      if (!stack) return { ok: false, reason: 'ammunition', type: summary.type, available: 0 };
+      ammo = { itemId: stack.item.id, type: summary.type, remaining: Math.max(0, summary.total - 1) };
+    }
+    update(state => {
+      if (cost) state.classes.treasureHunter.coolUsed = Math.min(T.coolTotal(D.level(state)), number(state.classes.treasureHunter.coolUsed) + cost);
+      if (featureId && featureMax) state.classes.treasureHunter.featureUses[featureId] = Math.min(featureMax, number(state.classes.treasureHunter.featureUses[featureId]) + 1);
+      if (relicInstanceId) {
+        const entry = state.classes.treasureHunter.relics.find(item => item.instanceId === relicInstanceId);
+        if (entry) entry.used = Math.min(D.relicMax(entry, state), number(entry.used) + 1);
+      }
+      if (ammo) {
+        const item = findItem(state, ammo.itemId);
+        if (item) item.ammunitionCount = Math.max(0, D.ammunitionCount(item) - 1);
+      }
+    }, `action:execute:${String(payload.name || payload.id || 'action')}`);
+    return {
+      ok: true, name: String(payload.name || 'Action'), cost,
+      featureUse: featureId && featureMax ? { id: featureId, remaining: Math.max(0, featureMax - featureUsed - 1) } : null,
+      relicUse: relicInstanceId ? { id: relicInstanceId, remaining: Math.max(0, relicMax - number(relicEntry.used) - 1) } : null,
+      ammunition: ammo
+    };
+  }
+
+  function levelUp(targetLevel) {
+    const source = S.get();
+    const current = D.level(source);
+    const target = clamp(targetLevel, 1, 20);
+    if (target !== current + 1) return { ok: false, reason: current >= 20 ? 'maximum' : 'next-level', current, target };
+    const oldMax = D.hpMax(source);
+    const oldDamage = Math.max(0, oldMax - number(source.character.hp.current));
+    update(state => {
+      state.character.level = target;
+      const nextMax = D.hpMax(state);
+      state.character.hp.max = nextMax;
+      state.character.hp.current = Math.max(0, Math.min(nextMax, nextMax - oldDamage));
+      state.classes.treasureHunter.coolUsed = clamp(state.classes.treasureHunter.coolUsed, 0, T.coolTotal(target));
+    }, `level-up:${current}:${target}`);
+    return { ok: true, from: current, to: target, hpMax: D.hpMax(S.get()), missing: D.choiceRequirements(S.get()) };
+  }
+
   function setEncumbranceMode(mode) {
     if (!['basic', 'balanced', 'variant'].includes(mode)) return false;
     update(state => { state.character.gear.encumbranceMode = mode; }, 'gear:encumbrance');
@@ -660,6 +721,30 @@
     return applied;
   }
 
+  function exchangeCurrency(fromId, toId, values, feePercent = 0) {
+    const from = GearRules?.CURRENCY_BY_ID?.has(fromId) ? fromId : '';
+    const to = GearRules?.CURRENCY_BY_ID?.has(toId) ? toId : '';
+    if (!from || !to || from === to) return { ok: false, reason: 'currency' };
+    const sentCp = Math.max(0, Math.trunc(number(values?.g))) * 100 + Math.max(0, Math.trunc(number(values?.s))) * 10 + Math.max(0, Math.trunc(number(values?.c)));
+    if (!sentCp) return { ok: false, reason: 'amount' };
+    const source = S.get();
+    const availableCp = D.walletCp(source.character.gear.currencyWallets?.[from]);
+    if (availableCp < sentCp) return { ok: false, reason: 'funds', availableCp };
+    const fee = clamp(feePercent, 0, 100);
+    const receivedCp = Math.max(0, Math.floor(sentCp * (1 - fee / 100)));
+    const transaction = { id: S.uid('exchange'), at: new Date().toISOString(), fromId: from, toId: to, sentCp, receivedCp, feePercent: fee };
+    update(state => {
+      const wallets = state.character.gear.currencyWallets || (state.character.gear.currencyWallets = {});
+      const fromWallet = wallets[from] || (wallets[from] = { g: 0, s: 0, c: 0 });
+      const toWallet = wallets[to] || (wallets[to] = { g: 0, s: 0, c: 0 });
+      wallets[from] = D.cpCoins(D.walletCp(fromWallet) - sentCp);
+      wallets[to] = D.cpCoins(D.walletCp(toWallet) + receivedCp);
+      state.character.gear.currencyTransactions.push(transaction);
+      state.character.gear.currencyTransactions = state.character.gear.currencyTransactions.slice(-50);
+    }, `currency:exchange:${from}:${to}`);
+    return { ok: true, ...transaction };
+  }
+
   function setFavoriteCurrency(currencyId) {
     if (!GearRules?.CURRENCY_BY_ID?.has(currencyId)) return false;
     update(state => { state.character.gear.favoriteCurrencyId = currencyId; }, 'currency:favorite');
@@ -735,6 +820,33 @@
     update(state => { const npc = state.campaign.npcs.find(item => item.id === id); if (npc) npc.favorite = !npc.favorite; }, 'npc:favorite');
   }
 
+  function saveJournalEntry(payload = {}) {
+    let id = String(payload.id || '');
+    update(state => {
+      const current = state.campaign.journal.find(entry => entry.id === id);
+      const now = new Date().toISOString();
+      const next = {
+        title: String(payload.title || 'Untitled entry').trim() || 'Untitled entry',
+        type: ['session', 'quest', 'clue', 'location', 'note'].includes(payload.type) ? payload.type : 'note',
+        date: String(payload.date || ''), location: String(payload.location || ''), body: String(payload.body || ''),
+        favorite: payload.favorite == null ? !!current?.favorite : !!payload.favorite,
+        npcIds: unique(payload.npcIds), itemIds: unique(payload.itemIds), relicIds: unique(payload.relicIds),
+        createdAt: current?.createdAt || now, updatedAt: now
+      };
+      if (current) Object.assign(current, next);
+      else { id = S.uid('journal'); state.campaign.journal.push({ id, ...next }); }
+    }, 'journal:save');
+    return id;
+  }
+
+  function deleteJournalEntry(id) {
+    update(state => { state.campaign.journal = state.campaign.journal.filter(entry => entry.id !== id); }, 'journal:delete');
+  }
+
+  function toggleJournalFavorite(id) {
+    update(state => { const entry = state.campaign.journal.find(item => item.id === id); if (entry) entry.favorite = !entry.favorite; }, 'journal:favorite');
+  }
+
   function saveBio(values) {
     update(state => { for (const [key, value] of Object.entries(values || {})) state.character.bio[key] = String(value || '').trim(); }, 'bio:save');
   }
@@ -755,8 +867,8 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, moveItem, setItemEquipped, removeItem, spendAmmunition, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
-    setMoney, adjustMoney, adjustCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
-    toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
+    setMoney, adjustMoney, adjustCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
+    toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveJournalEntry, deleteJournalEntry, toggleJournalFavorite, saveBio, setUi
   };
 })();

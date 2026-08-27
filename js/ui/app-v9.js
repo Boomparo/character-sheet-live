@@ -60,7 +60,8 @@
     featureSearch: '', catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
     catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '',
     pendingNpcRelations: [], activeNpcId: '', activeItemId: '', activeCurrencyId: 'generic', restMode: 'short', restHitDice: 0,
-    builderTab: 'setup', catalogItems: [], scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: ''
+    builderTab: 'setup', catalogItems: [], activeActionId: '', activeJournalId: '', exchangeToId: '', searchResults: [],
+    scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: ''
   };
 
   const $ = selector => document.querySelector(selector);
@@ -141,17 +142,48 @@
     const title = result.locked && result.sources?.length ? `Forced by ${result.sources.join(', ')}` : result.mode;
     return `<span class="roll-indicator ${result.mode}" title="${esc(title)}" aria-label="${esc(title)}">${result.mode === 'advantage' ? 'A' : 'D'}</span>`;
   }
-  function toast(message, type = 'success') {
+  function toast(message, type = 'success', options = {}) {
     const host = $('#toastHost');
     if (!host) return;
     const element = document.createElement('div');
     element.className = `toast ${type}`;
-    element.textContent = message;
+    element.innerHTML = `<span>${esc(message)}</span>${options.undo ? '<button type="button" data-history-undo>UNDO</button>' : ''}`;
     host.appendChild(element);
-    setTimeout(() => element.remove(), 2400);
+    setTimeout(() => element.remove(), options.undo ? 5200 : 2400);
   }
+  function toastUndo(message, type = 'success') { toast(message, type, { undo: true }); }
   function showDialog(id) { const dialog = $(id); if (dialog && !dialog.open) dialog.showModal(); }
   function closeDialog(id) { const dialog = $(id); if (dialog?.open) dialog.close(); }
+
+  function historyLabel(reason) {
+    const value = String(reason || 'update');
+    if (value.startsWith('hp:damage')) return 'Damage applied';
+    if (value.startsWith('hp:heal')) return 'HP healed';
+    if (value.startsWith('hp:temp')) return 'Temporary HP changed';
+    if (value.startsWith('cool:')) return 'Cool Points changed';
+    if (value.startsWith('action:execute:')) return `Action used: ${value.split(':').slice(2).join(':')}`;
+    if (value.startsWith('ammunition:')) return 'Ammunition changed';
+    if (value.startsWith('currency:exchange:')) return 'Currency exchanged';
+    if (value.startsWith('currency:') || value.startsWith('money:')) return 'Money changed';
+    if (value.startsWith('level-up:')) return `Level ${value.split(':')[1]} → ${value.split(':')[2]}`;
+    if (value.startsWith('journal:')) return 'Journal changed';
+    if (value.startsWith('npc:')) return 'NPC changed';
+    if (value.startsWith('item:equip')) return 'Item equipped';
+    if (value.startsWith('item:unequip')) return 'Item unequipped';
+    if (value.startsWith('item:')) return 'Inventory changed';
+    if (value.startsWith('condition:') || value.startsWith('exhaustion:')) return 'Condition changed';
+    if (value.startsWith('rest:')) return value.endsWith('long') ? 'Long Rest completed' : 'Short Rest completed';
+    if (value.startsWith('builder:') || value.startsWith('character:')) return 'Character setup changed';
+    if (value.startsWith('import:')) return 'Character data imported';
+    return value.replace(/[:_-]+/g, ' ');
+  }
+
+  function renderHistoryDialog() {
+    const entries = S.history();
+    $('#historyList').innerHTML = entries.map((entry, index) => `<div class="history-row ${index ? '' : 'latest'}"><span><b>${esc(historyLabel(entry.reason))}</b><small>${new Date(entry.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small></span>${index === 0 ? '<button type="button" class="small-btn" data-history-undo>Undo</button>' : ''}</div>`).join('') || '<div class="empty">No reversible changes in this session.</div>';
+  }
+
+  function openHistory() { renderHistoryDialog(); showDialog('#historyDialog'); }
 
   function renderTop() {
     const source = state();
@@ -305,9 +337,9 @@
     const breakdown = record.attackBreakdown?.length ? `<details class="attack-breakdown"><summary>Attack calculation</summary><div class="formula-list">${record.attackBreakdown.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></details>` : '';
     const fullDamage = record.damage ? `<div class="action-damage-detail"><b>DAMAGE</b><span>${esc(record.damage)}</span></div>` : '';
     const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(record.name)}"><b>${record.cost}</b><span>COOL</span></button>` : '';
-    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-ammo-use="${esc(record.weaponId)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(record.name)} and spend one ${esc(record.ammunition.type || 'bullet')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span></button>` : '';
+    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Use ${esc(record.name)} and manage ${esc(record.ammunition.type || 'bullet')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'USE · −1' : 'EMPTY'}</span></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
-    return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}">
+    return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}" data-search-anchor="action:${esc(record.id)}">
       <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
       <div class="row-detail">${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
@@ -433,7 +465,7 @@
     const choiceMissing = feature.level <= D.level(source) && featureChoiceIncomplete(feature, source);
     const subclassFeature = D.featureSubclassDefinition(feature);
     const damageBonus = featureDamageBadge(feature.id, source);
-    return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}">
+    return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}" data-search-anchor="feature:${esc(feature.id)}">
       <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><span class="action-title-line"><strong>${esc(feature.name)}</strong>${damageBonus ? `<b class="damage-bonus-chip">${esc(damageBonus)}</b>` : ''}</span><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span class="feature-cool-cost">${feature.cost} COOL</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
       <div class="row-detail">${rulesText(feature.fullText || feature.summary, source)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
     </article>`;
@@ -499,7 +531,7 @@
       const left = Math.max(0, max - Number(entry.used || 0));
       const charges = max ? `<div class="charge-row"><span>${left}/${max} charges</span><div>${Array.from({ length: max }, (_, index) => `<button type="button" class="charge-dot ${index < left ? 'filled' : ''}" data-relic-use="${esc(entry.instanceId)}" data-delta="${index < left ? 1 : -1}" aria-label="${index < left ? 'Use' : 'Restore'} charge"></button>`).join('')}</div></div>` : '';
       const resistanceChoice = definition.choice === 'damageResistance' ? `<label>Chosen resistance<select data-relic-choice="${esc(entry.instanceId)}" data-choice-key="selectedDamageType"><option value="">Choose damage type…</option>${Rules.DAMAGE_TYPES.filter(([key]) => !['Bludgeoning', 'Piercing', 'Slashing', 'Force', 'Radiant'].includes(key)).map(([key, label]) => `<option value="${key}" ${entry.selectedDamageType === key ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>` : '';
-      return `<article class="relic-card ${entry.prepared ? 'prepared' : ''} ${open ? 'open' : ''}">
+      return `<article class="relic-card ${entry.prepared ? 'prepared' : ''} ${open ? 'open' : ''}" data-search-anchor="relic:${esc(entry.instanceId)}">
         <div class="relic-top"><button type="button" class="relic-title" data-relic-toggle="${esc(entry.instanceId)}"><span><small>${entry.prepared ? 'PREPARED' : 'RESERVE'} • LEVEL ${definition.level}</small><b>${esc(definition.name)}</b></span><i>›</i></button><button type="button" class="small-btn ${entry.prepared ? 'primary' : ''}" data-relic-prepare="${esc(entry.instanceId)}">${entry.prepared ? 'Prepared' : 'Prepare'}</button></div>
         ${charges}<div class="relic-detail">${nl(definition.fullText || definition.summary)}${resistanceChoice}<div class="detail-actions"><button type="button" class="small-btn danger" data-relic-remove="${esc(entry.instanceId)}">Remove from collection</button></div></div>
       </article>`;
@@ -590,7 +622,7 @@
     const weightNote = item.weightEstimated && item.weightNote ? `<div class="item-estimate-note"><b>Estimated weight</b><span>${esc(item.weightNote)} Edit it if this version of the item differs.</span></div>` : '';
     const equipButton = !item.isContainer ? `<button type="button" class="small-btn item-equip ${equipped ? 'primary' : ''}" data-item-equip="${esc(item.id)}">${equipped ? 'Unequip' : 'Equip'}</button>` : '';
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
-    return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}">
+    return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}" data-search-anchor="item:${esc(item.id)}">
       <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${ammunitionCount != null ? `<span class="ammo-count-chip">AMMO ${ammunitionCount}</span>` : item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
       <div class="inventory-detail">${activationNote}${weightNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
@@ -645,8 +677,7 @@
     `;
   }
 
-  function renderNpcs() {
-    const source = state();
+  function renderNpcDirectory(source) {
     const sort = source.ui.npcSort;
     const npcs = [...(source.campaign.npcs || [])].sort((a, b) => {
       if (sort === 'chronological') return String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || a.name.localeCompare(b.name);
@@ -654,8 +685,55 @@
       return a.name.localeCompare(b.name);
     });
     const sortButtons = [['alphabetical', 'A–Z'], ['chronological', 'RECENT'], ['favorites', 'FAVORITES']].map(([key, label]) => `<button type="button" class="filter-btn ${sort === key ? 'active' : ''}" data-npc-sort="${key}">${label}</button>`).join('');
-    const cards = npcs.map(npc => `<article class="npc-card tile"><button type="button" class="npc-card-main" data-npc-open="${esc(npc.id)}">${npc.image ? `<img class="npc-photo" src="${esc(npc.image)}" alt="">` : '<div class="npc-photo npc-placeholder">♟</div>'}<span class="npc-card-copy"><strong>${esc(npc.name)}</strong><span>${esc(npc.profession || 'Unknown profession')}</span><small>${esc(npc.nationality || 'Unknown nationality')}</small></span></button><button type="button" class="favorite npc-favorite ${npc.favorite ? 'on' : ''}" data-npc-favorite="${esc(npc.id)}" aria-label="Favorite ${esc(npc.name)}">★</button></article>`).join('') || '<div class="empty">No NPCs yet.</div>';
-    $('#npcsPage').innerHTML = `${pageIntro('NPCs', 'People, contacts and relationships')}${section('NPC Directory', `<div class="npc-toolbar"><button type="button" class="small-btn primary" data-new-npc>+ NPC</button><div class="npc-sort">${sortButtons}</div></div><div class="npc-grid top-gap">${cards}</div>`)}`;
+    const cards = npcs.map(npc => `<article class="npc-card tile" data-search-anchor="npc:${esc(npc.id)}"><button type="button" class="npc-card-main" data-npc-open="${esc(npc.id)}">${npc.image ? `<img class="npc-photo" src="${esc(npc.image)}" alt="">` : '<div class="npc-photo npc-placeholder">♟</div>'}<span class="npc-card-copy"><strong>${esc(npc.name)}</strong><span>${esc(npc.profession || 'Unknown profession')}</span><small>${esc(npc.nationality || 'Unknown nationality')}</small></span></button><button type="button" class="favorite npc-favorite ${npc.favorite ? 'on' : ''}" data-npc-favorite="${esc(npc.id)}" aria-label="Favorite ${esc(npc.name)}">★</button></article>`).join('') || '<div class="empty">No NPCs yet.</div>';
+    return section('NPC Directory', `<div class="npc-toolbar"><button type="button" class="small-btn primary" data-new-npc>+ NPC</button><div class="npc-sort">${sortButtons}</div></div><div class="npc-grid top-gap">${cards}</div>`);
+  }
+
+  function journalLinkLabels(entry, source) {
+    const labels = [];
+    for (const id of entry.npcIds || []) { const npc = source.campaign.npcs.find(item => item.id === id); if (npc) labels.push(`NPC · ${npc.name}`); }
+    for (const id of entry.itemIds || []) { const item = D.inventory(source).find(record => record.id === id); if (item) labels.push(`ITEM · ${item.name}`); }
+    for (const id of entry.relicIds || []) { const owned = source.classes.treasureHunter.relics.find(record => record.instanceId === id); const relic = owned && Relics.find(record => record.id === owned.relicId); if (relic) labels.push(`RELIC · ${relic.name}`); }
+    return labels;
+  }
+
+  function renderJournal(source) {
+    const entries = [...(source.campaign.journal || [])].sort((a, b) => Number(b.favorite) - Number(a.favorite) || String(b.date || b.updatedAt).localeCompare(String(a.date || a.updatedAt)));
+    const cards = entries.map(entry => {
+      const links = journalLinkLabels(entry, source);
+      return `<article class="journal-card" data-search-anchor="journal:${esc(entry.id)}"><button type="button" data-journal-open="${esc(entry.id)}"><span class="journal-card-head"><small>${esc(entry.type.toUpperCase())}${entry.date ? ` · ${esc(entry.date)}` : ''}</small><strong>${esc(entry.title)}</strong></span>${entry.location ? `<span class="journal-location">⌖ ${esc(entry.location)}</span>` : ''}<p>${nl(entry.body.slice(0, 180))}${entry.body.length > 180 ? '…' : ''}</p><span class="journal-link-chips">${links.slice(0, 4).map(label => `<i>${esc(label)}</i>`).join('')}${links.length > 4 ? `<i>+${links.length - 4}</i>` : ''}</span></button><button type="button" class="favorite ${entry.favorite ? 'on' : ''}" data-journal-favorite="${esc(entry.id)}">★</button></article>`;
+    }).join('') || '<div class="empty">No campaign entries yet.</div>';
+    return section('Campaign Journal', `<div class="detail-actions"><button type="button" class="small-btn primary" data-new-journal>+ Entry</button></div><div class="journal-list top-gap">${cards}</div>`);
+  }
+
+  function renderRelationMap(source) {
+    const npcs = [...(source.campaign.npcs || [])].sort((a, b) => a.name.localeCompare(b.name));
+    if (!npcs.length) return section('Relationship Map', '<div class="empty">Add NPCs to build the relationship map.</div>');
+    const centerX = 300, centerY = 205, radiusX = npcs.length === 1 ? 0 : 225, radiusY = npcs.length === 1 ? 0 : 145;
+    const positions = new Map(npcs.map((npc, index) => {
+      const angle = -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, npcs.length);
+      return [npc.id, { x: centerX + Math.cos(angle) * radiusX, y: centerY + Math.sin(angle) * radiusY }];
+    }));
+    const edges = [];
+    for (const npc of npcs) for (const relation of npc.relations || []) {
+      const from = positions.get(npc.id), to = positions.get(relation.npcId);
+      if (!from || !to) continue;
+      edges.push(`<g class="relation-edge"><line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" marker-end="url(#relationArrow)"></line>${relation.type ? `<text x="${(from.x + to.x) / 2}" y="${(from.y + to.y) / 2 - 5}">${esc(relation.type)}</text>` : ''}</g>`);
+    }
+    const nodes = npcs.map(npc => {
+      const point = positions.get(npc.id);
+      const initials = npc.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+      return `<g class="relation-node ${npc.favorite ? 'favorite' : ''}" data-npc-map-open="${esc(npc.id)}" transform="translate(${point.x} ${point.y})" tabindex="0" role="button"><circle r="31"></circle><text class="initials" y="5">${esc(initials || '?')}</text><text class="name" y="48">${esc(npc.name)}</text></g>`;
+    }).join('');
+    return section('Relationship Map', `<p class="muted">Tap a person to open their dossier. Arrows follow the relations saved on each NPC.</p><div class="relation-map"><svg viewBox="0 0 600 420" role="img" aria-label="NPC relationship map"><defs><marker id="relationArrow" markerWidth="8" markerHeight="8" refX="36" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${edges.join('')}${nodes}</svg></div>`);
+  }
+
+  function renderNpcs() {
+    const source = state();
+    const view = source.ui.campaignView || 'directory';
+    const tabs = [['directory', 'DIRECTORY'], ['journal', 'JOURNAL'], ['relations', 'RELATIONS']].map(([key, label]) => `<button type="button" class="filter-btn ${view === key ? 'active' : ''}" data-campaign-view="${key}">${label}</button>`).join('');
+    const body = view === 'journal' ? renderJournal(source) : view === 'relations' ? renderRelationMap(source) : renderNpcDirectory(source);
+    $('#npcsPage').innerHTML = `${pageIntro('NPCs', 'People, campaign notes and relationships')}<div class="campaign-tabs">${tabs}</div>${body}`;
   }
 
   function renderBio() {
@@ -747,13 +825,16 @@
     $('#charactersDialog form').insertAdjacentHTML('afterbegin', '<div class="roster-toolbar"><button type="button" class="small-btn" data-export-character>Export Character</button><button type="button" class="small-btn" data-export-roster>Export All</button><button type="button" class="small-btn" data-import-open>Import JSON</button></div>');
 
     document.body.insertAdjacentHTML('beforeend', `
-      <dialog id="builderDialog" class="sheet-dialog builder-dialog"><form method="dialog" id="builderForm"><div class="dialog-head"><strong>Character Builder</strong><button value="cancel" class="icon-btn">×</button></div><div class="builder-tabs"><button type="button" data-builder-tab="setup">SETUP & CHOICES</button><button type="button" data-builder-tab="data">JSON DATA</button></div><div id="builderBody"></div><menu><button value="cancel" class="ghost">Close</button><button id="builderSave" type="submit" class="primary">Save Setup</button></menu></form></dialog>
+      <dialog id="builderDialog" class="sheet-dialog builder-dialog"><form method="dialog" id="builderForm"><div class="dialog-head"><strong>Character Builder</strong><button value="cancel" class="icon-btn">×</button></div><div class="builder-tabs"><button type="button" data-builder-tab="setup">SETUP & CHOICES</button><button type="button" data-builder-tab="levelup">LEVEL UP</button><button type="button" data-builder-tab="data">JSON DATA</button></div><div id="builderBody"></div><menu><button value="cancel" class="ghost">Close</button><button id="builderSave" type="submit" class="primary">Save Setup</button></menu></form></dialog>
       <dialog id="bioDialog" class="sheet-dialog"><form method="dialog" id="bioForm"><div class="dialog-head"><strong>Character Bio</strong><button value="cancel" class="icon-btn">×</button></div><div id="bioFields"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Bio</button></menu></form></dialog>
       <dialog id="moneyDialog" class="sheet-dialog money-dialog"></dialog>
       <dialog id="restDialog" class="sheet-dialog rest-dialog"><form method="dialog" id="restForm"><div class="dialog-head"><strong id="restTitle">Rest</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="restBody"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary" id="finishRest">Finish Rest</button></menu></form></dialog>
       <dialog id="itemEditDialog" class="sheet-dialog item-edit-dialog"><form method="dialog" id="itemEditForm"><div class="dialog-head"><strong id="itemEditTitle">Item</strong><button value="cancel" class="icon-btn">×</button></div><input id="itemEditId" type="hidden"><label>Item name<input id="itemEditName" required></label><div class="form-grid two"><label>Type<select id="itemEditType"><option value="item">Item</option><option value="weapon">Weapon</option><option value="armor">Armor</option><option value="shield">Shield</option><option value="container">Container</option></select></label><label>Quantity<input id="itemEditQuantity" type="number" min="1" value="1"></label><label>Price<input id="itemEditPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label><label>Currency<select id="itemEditCurrency"><option value="gp">GP</option><option value="sp">SP</option><option value="cp">CP</option><option value="ep">EP</option><option value="pp">PP</option></select></label><label>Location<select id="itemEditLocation">${itemLocationOptions('carried')}</select></label><label>Stored in<select id="itemEditStoredIn"><option value="">No container</option></select></label></div><div class="item-toggle-grid"><label class="check-label"><input id="itemEditEquipped" type="checkbox"> Equipped / worn</label><label class="check-label"><input id="itemEditContainer" type="checkbox"> Use as container</label><label class="check-label"><input id="itemEditAttunement" type="checkbox"> Requires attunement</label><label class="check-label"><input id="itemEditAttuned" type="checkbox"> Attuned</label></div><details class="item-mechanics"><summary>Stats, defenses & action</summary><div class="form-grid two"><label>Damage dice<input id="itemEditDamage" placeholder="1d6"></label><label>Damage type<input id="itemEditDamageType" placeholder="Slashing"></label><label>Attack ability<select id="itemEditAttackAbility"><option value="">Automatic</option>${S.A.map(ability => `<option value="${ability}">${ability}</option>`).join('')}</select></label><label>Mastery<input id="itemEditMastery"></label><label>Armor base<input id="itemEditArmorBase" type="number" min="0" placeholder="e.g. 12"></label><label>Armor DEX<select id="itemEditArmorDex"><option value="full">Full DEX</option><option value="capped">DEX capped</option><option value="none">No DEX</option></select></label><label>DEX cap<input id="itemEditArmorDexCap" type="number" min="0" value="2"></label><label>AC bonus<input id="itemEditAcBonus" type="number" value="0"></label><label>Speed bonus<input id="itemEditSpeedBonus" type="number" value="0"></label><label>Initiative bonus<input id="itemEditInitiativeBonus" type="number" value="0"></label><label>Attack bonus<input id="itemEditAttackBonus" type="number" value="0"></label><label>Damage bonus<input id="itemEditDamageBonus" type="number" value="0"></label><label>Resistance<input id="itemEditResistance" placeholder="Fire, Cold"></label><label>Immunity<input id="itemEditImmunity" placeholder="Poison"></label><label>Vulnerability<input id="itemEditVulnerability" placeholder="Radiant"></label><label>Condition immunity<input id="itemEditConditionImmunity" placeholder="Charmed"></label><label>Action name<input id="itemEditActionName" placeholder="Optional"></label><label>Action type<select id="itemEditActionType"><option value="">No action</option><option>Action</option><option>Bonus Action</option><option>Reaction</option><option>Free</option><option>Other</option></select></label><label>Action damage<input id="itemEditActionDamage" placeholder="Optional"></label><label class="check-label"><input id="itemEditActionAttack" type="checkbox"> Attack action</label></div><label>Action rules<textarea id="itemEditActionSummary" rows="3"></textarea></label></details><label>Notes<textarea id="itemEditNotes" rows="5"></textarea></label><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Item</button></menu></form></dialog>
       <dialog id="statDialog" class="sheet-dialog"><form method="dialog"><div class="dialog-head"><strong id="statTitle">Stat</strong><button value="cancel" class="icon-btn">×</button></div><div id="statBody"></div></form></dialog>
       <dialog id="importDialog" class="sheet-dialog import-dialog"><form method="dialog"><div class="dialog-head"><strong>Import Character Data</strong><button value="cancel" class="icon-btn">×</button></div><label>JSON file<input id="importFile" type="file" accept="application/json,.json"></label><textarea id="importText" rows="14" spellcheck="false" placeholder="Paste complete character JSON…"></textarea><div id="importReport" class="import-report">V9/V7 character, roster, Character Craft and simple character JSON are supported.</div><menu><button value="cancel" class="ghost">Cancel</button><button type="button" id="applyImport" class="primary">Import</button></menu></form></dialog>
+      <dialog id="actionUseDialog" class="sheet-dialog action-use-dialog"><form method="dialog" id="actionUseForm"><div class="dialog-head"><strong id="actionUseTitle">Use Action</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="actionUseBody"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Confirm use</button></menu></form></dialog>
+      <dialog id="historyDialog" class="sheet-dialog history-dialog"><form method="dialog"><div class="dialog-head"><strong>Recent Changes</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><p class="muted">Changes can be undone one at a time while this Sheet remains open.</p><div id="historyList" class="history-list"></div></form></dialog>
+      <dialog id="journalDialog" class="sheet-dialog journal-dialog"><form method="dialog" id="journalForm"><div class="dialog-head"><strong>Campaign Journal</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><input id="journalId" type="hidden"><label>Title<input id="journalTitle" required></label><div class="form-grid two"><label>Type<select id="journalType"><option value="session">Session</option><option value="quest">Quest</option><option value="clue">Clue</option><option value="location">Location</option><option value="note">Note</option></select></label><label>Date<input id="journalDate" type="date"></label><label>Location<input id="journalLocation" placeholder="City, ruin, country…"></label><label class="check-label"><input id="journalFavorite" type="checkbox"> Favorite entry</label></div><label>Notes<textarea id="journalBody" rows="7"></textarea></label><details class="journal-links"><summary>Linked NPCs, items and relics</summary><div id="journalLinkFields"></div></details><menu><button type="button" id="journalDeleteBtn" class="danger">Delete</button><span class="menu-spacer"></span><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save entry</button></menu></form></dialog>
     `);
     $('#itemEditQuantity').closest('label').insertAdjacentHTML('afterend', '<label>Weight per item (lb.)<input id="itemEditWeight" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Unknown"></label>');
   }
@@ -944,13 +1025,40 @@
     $('#builderBody').innerHTML = `<div class="builder-data"><p class="muted">Export contains the complete canonical character state. Paste a full V9/V7, Character Craft, roster or simple character JSON to import it.</p><textarea id="builderJson" rows="18" spellcheck="false">${esc(JSON.stringify(state(), null, 2))}</textarea><div class="detail-actions"><button type="button" class="small-btn" data-builder-copy-json>Copy</button><button type="button" class="small-btn" data-export-character>Download</button><button type="button" class="small-btn primary" data-builder-import-json>Import pasted JSON</button></div></div>`;
   }
 
+  function renderBuilderLevelUp() {
+    const source = state();
+    const current = D.level(source);
+    if (current >= 20) {
+      $('#builderBody').innerHTML = '<div class="builder-status complete">Level 20 reached. There is no higher Treasure Hunter level.</div>';
+      return;
+    }
+    const target = current + 1;
+    const preview = S.normalize(S.clone(source), { skipAbilityMigration: true });
+    preview.character.level = target;
+    const features = T.features.filter(feature => feature.level === target && D.featureMatchesSubclass(feature, preview));
+    const featureRows = features.map(feature => `<div class="level-up-feature"><span><b>${esc(feature.name)}</b><small>${feature.kind === 'subclass' ? esc(D.subclassName(preview) || 'Subclass') : 'Treasure Hunter'}</small></span><em>${esc(actionCode(feature.action))}</em></div>`).join('');
+    const required = Object.entries(T.choiceDefinitions || {}).flatMap(([featureId, definitions]) => {
+      const feature = T.features.find(item => item.id === featureId);
+      return feature?.level === target ? definitions.map(definition => `${feature.name}: ${definition.label}`) : [];
+    });
+    if (target === 3 && !D.subclassName(preview)) required.unshift('Choose and confirm a Treasure Hunter subclass');
+    const changes = [
+      ['Proficiency Bonus', S.signed(D.pb(source)), S.signed(D.pb(preview))],
+      ['Max HP', D.hpMax(source), D.hpMax(preview)],
+      ['Cool Points', T.coolTotal(current), T.coolTotal(target)],
+      ['Cool die', coolDice(1, source), coolDice(1, preview)]
+    ];
+    $('#builderBody').innerHTML = `<section class="level-up-hero"><small>NEXT TREASURE HUNTER LEVEL</small><div><b>${current}</b><i>→</i><strong>${target}</strong></div></section><section class="builder-block"><h3>What changes</h3><div class="level-up-stats">${changes.map(([label, before, after]) => `<div class="${String(before) === String(after) ? 'unchanged' : ''}"><span>${esc(label)}</span><small>${esc(before)}</small><i>→</i><b>${esc(after)}</b></div>`).join('')}</div></section><section class="builder-block"><h3>New features</h3><div class="level-up-features">${featureRows || '<span class="muted">No new named feature at this level.</span>'}</div></section>${required.length ? `<section class="builder-block level-up-required"><h3>Choices after leveling</h3>${required.map(choice => `<div>• ${esc(choice)}</div>`).join('')}<small>You will be taken to Setup & Choices after applying the level.</small></section>` : ''}<button type="button" class="primary level-up-apply" data-level-up-apply="${target}">Confirm level ${target}</button>`;
+  }
+
   function renderBuilder() {
     $$('#builderDialog [data-builder-tab]').forEach(button => button.classList.toggle('active', button.dataset.builderTab === local.builderTab));
     $('#builderSave').hidden = local.builderTab !== 'setup';
     if (local.builderTab === 'data') renderBuilderData();
+    else if (local.builderTab === 'levelup') renderBuilderLevelUp();
     else { renderBuilderSetup(); syncBuilderChoices(); }
   }
-  function openBuilder(tab = 'setup') { local.builderTab = tab === 'data' ? 'data' : 'setup'; renderBuilder(); showDialog('#builderDialog'); }
+  function openBuilder(tab = 'setup') { local.builderTab = ['setup', 'levelup', 'data'].includes(tab) ? tab : 'setup'; renderBuilder(); showDialog('#builderDialog'); }
 
   function collectBuilder() {
     return {
@@ -1026,9 +1134,16 @@
     const active = GearRules.currency(local.activeCurrencyId);
     const wallet = summary.wallets[active.id] || { g: 0, s: 0, c: 0 };
     const currencyOptions = GearRules.WORLD_CURRENCIES.map(currency => `<option value="${currency.id}" ${currency.id === active.id ? 'selected' : ''}>${esc(currency.region)} · ${esc(currency.name)}</option>`).join('');
+    if (!GearRules.CURRENCY_BY_ID.has(local.exchangeToId) || local.exchangeToId === active.id) local.exchangeToId = GearRules.WORLD_CURRENCIES.find(currency => currency.id !== active.id)?.id || 'generic';
+    const exchangeOptions = GearRules.WORLD_CURRENCIES.filter(currency => currency.id !== active.id).map(currency => `<option value="${currency.id}" ${currency.id === local.exchangeToId ? 'selected' : ''}>${esc(currency.region)} · ${esc(currency.name)}</option>`).join('');
     const ownedRows = summary.owned.sort((a, b) => Number(b.id === summary.favoriteId) - Number(a.id === summary.favoriteId) || a.region.localeCompare(b.region)).map(currency => `<button type="button" class="currency-account ${currency.id === active.id ? 'active' : ''}" data-currency-select="${currency.id}"><span><b>${currency.id === summary.favoriteId ? '★ ' : ''}${esc(currency.name)}</b><small>${esc(currency.region)}</small></span><em>${currency.wallet.g} G · ${currency.wallet.s} S · ${currency.wallet.c} C</em></button>`).join('');
     const total = D.cpCoins(summary.totalCp);
-    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove. Each national currency remains separate; the top total is converted automatically.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="" placeholder="+ / −"></label>`).join('')}</div><menu><button value="cancel" class="ghost">Close</button><button type="submit" class="primary">Apply change</button></menu></form>`;
+    const transactions = [...(state().character.gear.currencyTransactions || [])].reverse().slice(0, 8).map(entry => {
+      const from = GearRules.currency(entry.fromId), to = GearRules.currency(entry.toId);
+      const sent = D.cpCoins(entry.sentCp), received = D.cpCoins(entry.receivedCp);
+      return `<div class="exchange-history-row"><span><b>${esc(from.name)} → ${esc(to.name)}</b><small>${new Date(entry.at).toLocaleDateString()} · fee ${entry.feePercent}%</small></span><em>${sent.g} G ${sent.s} S ${sent.c} C<br>→ ${received.g} G ${received.s} S ${received.c} C</em></div>`;
+    }).join('') || '<div class="empty">No exchanges yet.</div>';
+    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="" placeholder="+ / −"></label>`).join('')}</div><button type="submit" class="primary money-apply">Apply change</button><details class="currency-exchange"><summary>Exchange currency</summary><div class="exchange-route"><span><small>FROM</small><b>${esc(active.name)}</b></span><i>→</i><label><small>TO</small><select id="exchangeCurrencyTo">${exchangeOptions}</select></label></div><div class="exchange-amounts">${[['G', 'gold'], ['S', 'silver'], ['C', 'copper']].map(([letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><input id="exchange${letter}" type="number" min="0" inputmode="numeric" value="" placeholder="0"></label>`).join('')}</div><label>Exchange fee (%)<input id="exchangeFee" type="number" min="0" max="100" step="0.5" value="0"></label><button type="button" class="small-btn primary" data-currency-exchange>Exchange</button><div class="exchange-history"><div class="dialog-subhead"><b>Recent exchanges</b><small>Stored with the character.</small></div>${transactions}</div></details><menu><button value="cancel" class="ghost">Close</button></menu></form>`;
   }
 
   function openMoney() {
@@ -1134,6 +1249,26 @@
     $('#npcDeleteBtn').hidden = !npc.id;
     renderNpcRelationsEditor();
     showDialog('#npcDialog');
+  }
+
+  function openJournal(id = '') {
+    const source = state();
+    const entry = source.campaign.journal.find(item => item.id === id) || {};
+    local.activeJournalId = entry.id || '';
+    $('#journalId').value = entry.id || '';
+    $('#journalTitle').value = entry.title || '';
+    $('#journalType').value = entry.type || 'session';
+    $('#journalDate').value = entry.date || '';
+    $('#journalLocation').value = entry.location || '';
+    $('#journalBody').value = entry.body || '';
+    $('#journalFavorite').checked = !!entry.favorite;
+    const checked = (list, value) => (list || []).includes(value) ? 'checked' : '';
+    const npcs = [...source.campaign.npcs].sort((a, b) => a.name.localeCompare(b.name)).map(npc => `<label><input type="checkbox" data-journal-link="npc" value="${esc(npc.id)}" ${checked(entry.npcIds, npc.id)}><span>${esc(npc.name)}</span></label>`).join('') || '<span class="muted">No NPCs available.</span>';
+    const items = D.inventory(source).sort((a, b) => a.name.localeCompare(b.name)).map(item => `<label><input type="checkbox" data-journal-link="item" value="${esc(item.id)}" ${checked(entry.itemIds, item.id)}><span>${esc(item.name)}</span></label>`).join('') || '<span class="muted">No items available.</span>';
+    const relics = source.classes.treasureHunter.relics.map(owned => ({ owned, definition: Relics.find(relic => relic.id === owned.relicId) })).filter(record => record.definition).sort((a, b) => a.definition.name.localeCompare(b.definition.name)).map(record => `<label><input type="checkbox" data-journal-link="relic" value="${esc(record.owned.instanceId)}" ${checked(entry.relicIds, record.owned.instanceId)}><span>${esc(record.definition.name)}</span></label>`).join('') || '<span class="muted">No relics available.</span>';
+    $('#journalLinkFields').innerHTML = `<div class="journal-link-group"><b>NPCs</b>${npcs}</div><div class="journal-link-group"><b>Items</b>${items}</div><div class="journal-link-group"><b>Relics</b>${relics}</div>`;
+    $('#journalDeleteBtn').hidden = !entry.id;
+    showDialog('#journalDialog');
   }
   function openBio() {
     const bio = state().character.bio || {};
@@ -1361,14 +1496,42 @@
 
   function renderGlobalSearch() {
     const query = $('#globalSearch').value.trim().toLowerCase();
-    if (!query) { $('#globalSearchResults').innerHTML = ''; return; }
+    if (!query) { local.searchResults = []; $('#globalSearchResults').innerHTML = ''; return; }
     const source = state();
     const results = [];
-    T.features.filter(feature => feature.level <= D.level(source) && D.featureMatchesSubclass(feature, source)).forEach(feature => { if (`${feature.name} ${feature.summary}`.toLowerCase().includes(query)) results.push({ type: 'FEATURE', title: feature.name, page: 'featuresPage' }); });
-    if (D.subclassHasSystem('relics', source)) Relics.filter(relic => relic.level <= D.level(source)).forEach(relic => { if (`${relic.name} ${relic.summary}`.toLowerCase().includes(query)) results.push({ type: 'RELIC', title: relic.name, page: 'relicsPage' }); });
-    allGearItems(source).forEach(({ item }) => { if (`${item.name} ${item.description || ''}`.toLowerCase().includes(query)) results.push({ type: 'ITEM', title: item.name, page: 'gearPage' }); });
-    source.campaign.npcs.forEach(npc => { if (`${npc.name} ${npc.notes || ''}`.toLowerCase().includes(query)) results.push({ type: 'NPC', title: npc.name, page: 'npcsPage' }); });
-    $('#globalSearchResults').innerHTML = results.slice(0, 40).map(result => `<button type="button" class="search-result" data-search-jump="${result.page}"><small>${result.type}</small><strong>${esc(result.title)}</strong></button>`).join('') || '<div class="empty">Nothing found.</div>';
+    T.features.filter(feature => feature.level <= D.level(source) && D.featureMatchesSubclass(feature, source)).forEach(feature => { if (`${feature.name} ${feature.summary} ${feature.fullText || ''}`.toLowerCase().includes(query)) results.push({ kind: 'feature', type: 'FEATURE', id: feature.id, title: feature.name, page: 'featuresPage' }); });
+    allActionRecords().forEach(action => { if (`${action.name} ${action.summary || ''} ${action.source || ''}`.toLowerCase().includes(query)) results.push({ kind: 'action', type: 'ACTION', id: action.id, title: action.name, page: 'actionsPage' }); });
+    if (D.subclassHasSystem('relics', source)) source.classes.treasureHunter.relics.forEach(owned => { const relic = Relics.find(item => item.id === owned.relicId); if (relic && `${relic.name} ${relic.summary} ${relic.fullText || ''}`.toLowerCase().includes(query)) results.push({ kind: 'relic', type: 'RELIC', id: owned.instanceId, title: relic.name, page: 'relicsPage' }); });
+    allGearItems(source).forEach(({ item }) => { if (`${item.name} ${item.description || ''} ${item.notes || ''}`.toLowerCase().includes(query)) results.push({ kind: 'item', type: 'ITEM', id: item.id, title: item.name, page: 'gearPage' }); });
+    source.campaign.npcs.forEach(npc => { if (`${npc.name} ${npc.profession || ''} ${npc.nationality || ''} ${npc.location || ''} ${npc.notes || ''}`.toLowerCase().includes(query)) results.push({ kind: 'npc', type: 'NPC', id: npc.id, title: npc.name, page: 'npcsPage' }); });
+    source.campaign.journal.forEach(entry => { if (`${entry.title} ${entry.type} ${entry.location} ${entry.body}`.toLowerCase().includes(query)) results.push({ kind: 'journal', type: 'JOURNAL', id: entry.id, title: entry.title, page: 'npcsPage' }); });
+    local.searchResults = results.slice(0, 40);
+    $('#globalSearchResults').innerHTML = local.searchResults.map((result, index) => `<button type="button" class="search-result" data-search-result="${index}"><small>${result.type}</small><strong>${esc(result.title)}</strong><i>›</i></button>`).join('') || '<div class="empty">Nothing found.</div>';
+  }
+
+  function focusSearchResult(result) {
+    if (!result) return;
+    closeDialog('#searchDialog');
+    if (result.kind === 'feature') {
+      if (state().ui.featureView !== 'available') C.setUi('featureView', 'available');
+      if (state().ui.featureFilter !== 'all') C.setUi('featureFilter', 'all');
+      local.featureSearch = '';
+      if (!state().ui.openFeatures.includes(result.id)) C.toggleOpen('feature', result.id);
+    } else if (result.kind === 'action') {
+      if (state().ui.actionFilter !== 'all') C.setUi('actionFilter', 'all');
+      if (!state().ui.openActions.includes(result.id)) C.toggleOpen('action', result.id);
+    } else if (result.kind === 'relic' && !state().ui.openRelics.includes(result.id)) C.toggleOpen('relic', result.id);
+    else if (result.kind === 'item' && !state().ui.openItems.includes(result.id)) C.toggleOpen('item', result.id);
+    else if (result.kind === 'npc') C.setUi('campaignView', 'directory');
+    else if (result.kind === 'journal') C.setUi('campaignView', 'journal');
+    setPage(result.page, false);
+    setTimeout(() => {
+      const anchor = document.querySelector(`[data-search-anchor="${CSS.escape(`${result.kind}:${result.id}`)}"]`);
+      if (!anchor) { if (result.kind === 'npc') openNpc(result.id); else if (result.kind === 'journal') openJournal(result.id); return; }
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      anchor.classList.add('search-focus');
+      setTimeout(() => anchor.classList.remove('search-focus'), 1800);
+    }, 120);
   }
 
   function refreshBuilderSpecies() {
@@ -1395,21 +1558,43 @@
   }
 
   function actionById(id) { return allActionRecords().find(record => record.id === id); }
-  function useAction(id) {
+  function openActionUse(id) {
     const record = actionById(id);
     if (!record) return;
+    local.activeActionId = id;
+    const source = state();
+    const costs = [];
+    if (record.cost) costs.push(`<div><span>Cool Points</span><b>−${record.cost}</b></div>`);
+    if (record.uses) {
+      const used = Number(source.classes.treasureHunter.featureUses?.[record.featureId]) || 0;
+      costs.push(`<div><span>Feature uses</span><b>${Math.max(0, record.uses - used)} → ${Math.max(0, record.uses - used - 1)}</b></div>`);
+    }
     if (record.resource?.kind === 'relic') {
       const left = Math.max(0, record.resource.max - Number(record.resource.used || 0));
-      if (!left) { toast('No charges remaining.', 'warn'); return; }
+      costs.push(`<div><span>Relic charges</span><b>${left} → ${Math.max(0, left - 1)}</b></div>`);
     }
-    if (record.uses) {
-      const used = Number(state().classes.treasureHunter.featureUses?.[record.featureId]) || 0;
-      if (used >= record.uses) { toast('No uses remaining.', 'warn'); return; }
+    if (record.ammunition) costs.push(`<label class="action-use-ammo"><input id="actionUseAmmo" type="checkbox" checked><span><b>Spend 1 ${esc(record.ammunition.type || 'bullet')}</b><small>${record.ammunition.total} currently carried</small></span></label>`);
+    $('#actionUseTitle').textContent = record.name;
+    $('#actionUseBody').innerHTML = `<div class="action-use-summary"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span>${record.hit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}</div><div class="action-use-costs">${costs.join('') || '<div><span>No tracked resource cost</span><b>FREE</b></div>'}</div><small class="muted">Nothing is deducted until you confirm. The whole use can be undone as one change.</small>`;
+    showDialog('#actionUseDialog');
+  }
+
+  function confirmActionUse() {
+    const record = actionById(local.activeActionId);
+    if (!record) return;
+    const result = C.executeAction({
+      id: record.id, name: record.name, cost: record.cost, featureId: record.featureId, uses: record.uses,
+      relicInstanceId: record.resource?.kind === 'relic' ? record.resource.instanceId : '',
+      weaponId: record.weaponId, spendAmmo: !!record.ammunition && ($('#actionUseAmmo')?.checked ?? true)
+    });
+    if (!result.ok) {
+      const messages = { cool: 'Not enough Cool Points.', uses: 'No feature uses remaining.', charges: 'No relic charges remaining.', ammunition: 'No carried bullets available.', weapon: 'This weapon cannot spend ammunition.' };
+      toast(messages[result.reason] || 'The action could not be used.', 'warn');
+      return;
     }
-    if (record.cost && !C.spendCool(record.cost)) { toast(`Not enough Cool Points for ${record.name}.`, 'warn'); return; }
-    if (record.resource?.kind === 'relic') C.adjustRelicUse(record.resource.instanceId, 1);
-    if (record.uses) C.toggleFeatureUse(record.featureId, 1);
-    toast(record.cost ? `${record.cost} Cool Point${record.cost === 1 ? '' : 's'} used · ${record.name}` : `${record.name} used.`);
+    closeDialog('#actionUseDialog');
+    const spent = [result.cost ? `${result.cost} Cool` : '', result.ammunition ? `1 ${result.ammunition.type || 'bullet'}` : '', result.featureUse ? '1 use' : '', result.relicUse ? '1 charge' : ''].filter(Boolean).join(' · ');
+    toastUndo(`${record.name} used${spent ? ` · ${spent}` : ''}.`);
   }
 
   function onClick(event) {
@@ -1417,6 +1602,8 @@
     if (hpTarget) { event.preventDefault(); openHp(); return; }
     const statTarget = event.target.closest('[data-stat-detail]');
     if (statTarget) { event.preventDefault(); openStatDetail(statTarget.dataset.statDetail); return; }
+    const mapNpc = event.target.closest('[data-npc-map-open]');
+    if (mapNpc) { event.preventDefault(); openNpc(mapNpc.dataset.npcMapOpen); return; }
     const button = event.target.closest('button');
     if (!button) return;
     const parentDialog = button.closest('dialog');
@@ -1434,7 +1621,15 @@
     if (button.hasAttribute('data-open-builder')) { closeDialog('#statDialog'); openBuilder(); return; }
     if (button.dataset.jumpPage != null) { closeDialog('#statDialog'); setPage(button.dataset.jumpPage); return; }
     if (button.id === 'charactersBtn') { renderRoster(); return; }
+    if (button.id === 'historyBtn') { openHistory(); return; }
     if (button.id === 'searchBtn') { $('#globalSearch').value = ''; $('#globalSearchResults').innerHTML = ''; showDialog('#searchDialog'); setTimeout(() => $('#globalSearch').focus(), 0); return; }
+    if (button.hasAttribute('data-history-undo')) {
+      const entry = S.undo();
+      $$('.toast').forEach(element => element.remove());
+      if (!entry) toast('Nothing left to undo.', 'warn');
+      else { if ($('#historyDialog')?.open) renderHistoryDialog(); toast(`Undone: ${historyLabel(entry.reason)}.`); }
+      return;
+    }
 
     if (button.id === 'hpMinus') { setHpAmount(Number($('#hpAmountInput').value) - 1, true); return; }
     if (button.id === 'hpPlus') { setHpAmount(Number($('#hpAmountInput').value) + 1, true); return; }
@@ -1444,19 +1639,19 @@
       if (button.id === 'hpDamage') {
         const result = C.applyDamage(local.hpAmount, $('#hpDamageType').value);
         const defense = result.steps.length ? ` (${result.steps.join(' → ')})` : '';
-        toast(`${result.applied} damage${defense}; ${result.absorbed} absorbed by Temp HP.`);
+        toastUndo(`${result.applied} damage${defense}; ${result.absorbed} absorbed by Temp HP.`);
       } else {
         const result = C.heal(local.hpAmount);
-        toast(`${result.healed} HP healed.`);
+        toastUndo(`${result.healed} HP healed.`);
       }
       closeDialog('#hpDialog');
       return;
     }
-    if (button.id === 'hpTempSet') { setHpAmount($('#hpAmountInput').value); C.setTempHp(local.hpAmount); closeDialog('#hpDialog'); toast(`${local.hpAmount} Temporary HP set.`); return; }
-    if (button.id === 'hpTempClear') { C.setTempHp(0); closeDialog('#hpDialog'); toast('Temporary HP cleared.'); return; }
+    if (button.id === 'hpTempSet') { setHpAmount($('#hpAmountInput').value); C.setTempHp(local.hpAmount); closeDialog('#hpDialog'); toastUndo(`${local.hpAmount} Temporary HP set.`); return; }
+    if (button.id === 'hpTempClear') { C.setTempHp(0); closeDialog('#hpDialog'); toastUndo('Temporary HP cleared.'); return; }
 
     if (button.hasAttribute('data-inspiration')) { C.toggleInspiration(); return; }
-    if (button.dataset.coolAdjust) { C.adjustCool(button.dataset.coolAdjust); return; }
+    if (button.dataset.coolAdjust) { C.adjustCool(button.dataset.coolAdjust); toastUndo(Number(button.dataset.coolAdjust) > 0 ? '1 Cool Point used.' : '1 Cool Point restored.'); return; }
     if (button.dataset.luckAdjust) { C.adjustLuck(button.dataset.luckAdjust); return; }
     if (button.dataset.rest) { openRest(button.dataset.rest); return; }
     if (button.dataset.restDie) {
@@ -1465,20 +1660,15 @@
       $('#restHitDiceCount').textContent = local.restHitDice;
       return;
     }
-    if (button.hasAttribute('data-condition-add')) { const value = $('#conditionSelect').value; if (value && !C.addCondition(value)) toast('Condition is blocked by immunity.', 'warn'); return; }
-    if (button.dataset.conditionRemove) { C.removeCondition(button.dataset.conditionRemove); closeDialog('#statDialog'); return; }
-    if (button.dataset.exhaustionAdjust) { C.adjustExhaustion(button.dataset.exhaustionAdjust); return; }
+    if (button.hasAttribute('data-condition-add')) { const value = $('#conditionSelect').value; if (value && !C.addCondition(value)) toast('Condition is blocked by immunity.', 'warn'); else if (value) toastUndo(`${Rules.conditionName(value)} added.`); return; }
+    if (button.dataset.conditionRemove) { C.removeCondition(button.dataset.conditionRemove); closeDialog('#statDialog'); toastUndo(`${Rules.conditionName(button.dataset.conditionRemove)} removed.`); return; }
+    if (button.dataset.exhaustionAdjust) { C.adjustExhaustion(button.dataset.exhaustionAdjust); toastUndo('Exhaustion changed.'); return; }
     if (button.hasAttribute('data-defense-add')) { const kind = $('#defenseKind').value, value = $('#defenseValue').value; if (value) C.addDefense(kind, value); return; }
     if (button.dataset.defenseRemove) { const separator = button.dataset.defenseRemove.indexOf(':'); C.removeDefense(button.dataset.defenseRemove.slice(0, separator), button.dataset.defenseRemove.slice(separator + 1)); return; }
     if (button.dataset.actionFilter) { C.setUi('actionFilter', button.dataset.actionFilter); return; }
     if (button.dataset.actionToggle) { C.toggleOpen('action', button.dataset.actionToggle); return; }
     if (button.dataset.actionFavorite) { C.toggleFavorite('action', button.dataset.actionFavorite); return; }
-    if (button.dataset.ammoUse) {
-      const result = C.spendAmmunition(button.dataset.ammoUse);
-      toast(result.ok ? `Attack recorded · 1 ${result.type || 'bullet'} spent · ${result.remaining} left.` : 'No carried bullets available.', result.ok ? 'success' : 'warn');
-      return;
-    }
-    if (button.dataset.actionUse) { useAction(button.dataset.actionUse); return; }
+    if (button.dataset.actionUse) { openActionUse(button.dataset.actionUse); return; }
     if (button.hasAttribute('data-new-action')) { $('#actionForm').reset(); showDialog('#actionDialog'); return; }
     if (button.dataset.customActionRemove) { if (confirm('Delete this custom action?')) C.removeCustomAction(button.dataset.customActionRemove); return; }
     if (button.dataset.featureUse) { C.toggleFeatureUse(button.dataset.featureUse, button.dataset.delta); return; }
@@ -1499,6 +1689,19 @@
     if (button.dataset.currencySelect != null) { local.activeCurrencyId = button.dataset.currencySelect; renderMoneyDialog(); return; }
     if (button.dataset.currencyFavorite != null) { C.setFavoriteCurrency(button.dataset.currencyFavorite); local.activeCurrencyId = button.dataset.currencyFavorite; renderMoneyDialog(); toast(`${GearRules.currency(button.dataset.currencyFavorite).name} set as favorite.`); return; }
     if (button.dataset.currencyDisplay != null) { C.setCurrencyDisplayMode(button.dataset.currencyDisplay); renderMoneyDialog(); return; }
+    if (button.hasAttribute('data-currency-exchange')) {
+      const result = C.exchangeCurrency(local.activeCurrencyId, $('#exchangeCurrencyTo').value, { g: $('#exchangeG').value, s: $('#exchangeS').value, c: $('#exchangeC').value }, $('#exchangeFee').value);
+      if (!result.ok) {
+        const message = result.reason === 'funds' ? 'Not enough money in the selected currency.' : result.reason === 'amount' ? 'Enter an amount to exchange.' : 'Choose two different currencies.';
+        toast(message, 'warn');
+      } else {
+        local.exchangeToId = result.toId;
+        renderMoneyDialog();
+        const received = D.cpCoins(result.receivedCp);
+        toastUndo(`Exchange complete · received ${received.g} G ${received.s} S ${received.c} C.`);
+      }
+      return;
+    }
     if (button.hasAttribute('data-open-catalog')) { openCatalog(); return; }
     if (button.hasAttribute('data-starting-budget-save')) {
       const result = C.setStartingGearBudget($('#builderStartingGold').value);
@@ -1537,6 +1740,7 @@
       const item = findGearItem(button.dataset.itemEquip);
       const result = C.setItemEquipped(button.dataset.itemEquip, !D.isItemEquipped(item));
       if (!result.ok) toast('A container cannot be equipped.', 'warn');
+      else toastUndo(`${item.name} ${result.equipped ? 'equipped' : 'unequipped'}.`);
       return;
     }
     if (button.dataset.itemEdit) { openItemEditor(button.dataset.itemEdit); return; }
@@ -1572,6 +1776,7 @@
     }
 
     if (button.hasAttribute('data-new-npc')) { openNpc(); return; }
+    if (button.dataset.campaignView) { C.setUi('campaignView', button.dataset.campaignView); return; }
     if (button.dataset.npcOpen) { openNpc(button.dataset.npcOpen); return; }
     if (button.dataset.npcFavorite) { C.toggleNpcFavorite(button.dataset.npcFavorite); return; }
     if (button.dataset.npcSort) { C.setUi('npcSort', button.dataset.npcSort); return; }
@@ -1587,6 +1792,14 @@
     if (button.hasAttribute('data-npc-image-camera')) { $('#npcImageCamera').click(); return; }
     if (button.hasAttribute('data-npc-image-remove')) { local.pendingNpcImage = ''; $('#npcImagePreview').innerHTML = '<span>No portrait</span>'; return; }
     if (button.hasAttribute('data-bio-edit')) { openBio(); return; }
+    if (button.hasAttribute('data-new-journal')) { openJournal(); return; }
+    if (button.dataset.journalOpen) { openJournal(button.dataset.journalOpen); return; }
+    if (button.dataset.journalFavorite) { C.toggleJournalFavorite(button.dataset.journalFavorite); return; }
+    if (button.id === 'journalDeleteBtn') {
+      const id = $('#journalId').value;
+      if (id && confirm('Delete this journal entry?')) { C.deleteJournalEntry(id); closeDialog('#journalDialog'); toastUndo('Journal entry deleted.'); }
+      return;
+    }
     if (button.id === 'npcDeleteBtn') {
       const id = $('#npcId').value;
       if (id && confirm('Delete this NPC? This cannot be undone.')) { C.deleteNpc(id); closeDialog('#npcDialog'); toast('NPC deleted.'); }
@@ -1594,6 +1807,14 @@
     }
 
     if (button.dataset.builderTab) { local.builderTab = button.dataset.builderTab; renderBuilder(); return; }
+    if (button.dataset.levelUpApply) {
+      const result = C.levelUp(button.dataset.levelUpApply);
+      if (!result.ok) { toast(result.reason === 'maximum' ? 'Maximum level reached.' : 'Level-up must advance exactly one level.', 'warn'); return; }
+      local.builderTab = result.missing.length ? 'setup' : 'levelup';
+      renderBuilder();
+      toastUndo(`Level ${result.to} applied${result.missing.length ? ' · complete the highlighted choices' : ''}.`, result.missing.length ? 'warn' : 'success');
+      return;
+    }
     if (button.hasAttribute('data-builder-copy-json')) {
       const text = $('#builderJson').value;
       if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => toast('JSON copied.')).catch(() => toast('Copy failed.', 'warn'));
@@ -1618,13 +1839,14 @@
     if (button.dataset.rosterSwitch) { Roster?.switchTo(button.dataset.rosterSwitch); closeDialog('#charactersDialog'); return; }
     if (button.dataset.rosterDuplicate) { Roster?.duplicate(button.dataset.rosterDuplicate); closeDialog('#charactersDialog'); toast('Character duplicated.'); return; }
     if (button.dataset.rosterDelete) { if (confirm('Delete this character?')) { Roster?.remove(button.dataset.rosterDelete); renderRoster(); } return; }
-    if (button.dataset.searchJump != null) { closeDialog('#searchDialog'); setPage(button.dataset.searchJump); return; }
+    if (button.dataset.searchResult != null) { focusSearchResult(local.searchResults[Number(button.dataset.searchResult)]); return; }
   }
 
   function onChange(event) {
     const target = event.target;
     if (target.id === 'encumbranceMode' || target.id === 'statEncumbranceMode') { C.setEncumbranceMode(target.value); if (target.id === 'statEncumbranceMode') openStatDetail('encumbrance'); return; }
     if (target.id === 'moneyCurrencySelect') { local.activeCurrencyId = target.value; renderMoneyDialog(); return; }
+    if (target.id === 'exchangeCurrencyTo') { local.exchangeToId = target.value; return; }
     if (target.id === 'otherPossessions') { C.setOtherPossessions(target.value); toast('Other possessions saved.'); return; }
     if (target.id === 'defenseKind') {
       $('#defenseValue').innerHTML = target.value === 'conditionImmunity' ? $('#conditionDefenseOptions').innerHTML : $('#damageDefenseOptions').innerHTML;
@@ -1701,8 +1923,9 @@
   function onSubmit(event) {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
-    if (!['editForm', 'actionForm', 'npcForm', 'bioForm', 'moneyForm', 'restForm', 'itemEditForm', 'builderForm'].includes(form.id)) return;
+    if (!['editForm', 'actionForm', 'actionUseForm', 'npcForm', 'journalForm', 'bioForm', 'moneyForm', 'restForm', 'itemEditForm', 'builderForm'].includes(form.id)) return;
     event.preventDefault();
+    if (form.id === 'actionUseForm') { confirmActionUse(); return; }
     if (form.id === 'editForm') {
       C.saveQuickCharacter({
         name: $('#editName').value, level: $('#editLevel').value, portrait: local.pendingPortrait,
@@ -1718,7 +1941,16 @@
     }
     if (form.id === 'npcForm') {
       C.saveNpc({ id: $('#npcId').value, name: $('#npcName').value, profession: $('#npcProfession').value, nationality: $('#npcNationality').value, location: $('#npcLocation').value, notes: $('#npcNotes').value, image: local.pendingNpcImage, relations: local.pendingNpcRelations });
-      closeDialog('#npcDialog'); toast('NPC saved.'); return;
+      closeDialog('#npcDialog'); toastUndo('NPC saved.'); return;
+    }
+    if (form.id === 'journalForm') {
+      const links = kind => $$(`[data-journal-link="${kind}"]:checked`).map(input => input.value);
+      C.saveJournalEntry({
+        id: $('#journalId').value, title: $('#journalTitle').value, type: $('#journalType').value,
+        date: $('#journalDate').value, location: $('#journalLocation').value, body: $('#journalBody').value,
+        favorite: $('#journalFavorite').checked, npcIds: links('npc'), itemIds: links('item'), relicIds: links('relic')
+      });
+      closeDialog('#journalDialog'); toastUndo('Journal entry saved.'); return;
     }
     if (form.id === 'bioForm') {
       C.saveBio(Object.fromEntries($$('[data-bio-field]').map(field => [field.dataset.bioField, field.value])));
@@ -1728,7 +1960,7 @@
       const applied = C.adjustCurrency(local.activeCurrencyId, { g: $('#moneyGDelta').value, s: $('#moneySDelta').value, c: $('#moneyCDelta').value });
       const summary = Object.entries(applied).filter(([, amount]) => amount).map(([coin, amount]) => `${amount > 0 ? '+' : ''}${amount} ${coin.toUpperCase()}`).join(' • ');
       renderMoneyDialog();
-      toast(summary || 'No money changed.'); return;
+      if (summary) toastUndo(summary); else toast('No money changed.'); return;
     }
     if (form.id === 'restForm') {
       const long = local.restMode === 'long';

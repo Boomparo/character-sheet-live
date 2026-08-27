@@ -48,20 +48,21 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.6.1-ammunition-actions');
+assert.equal(S.APP_VERSION, '9.7.0-smart-play');
 
 function fresh(mutator) {
   const value = S.fresh();
   if (mutator) mutator(value);
   S.replace(value, 'test:reset');
   S.flush();
+  S.clearHistory();
   return S.get();
 }
 
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 15);
+  assert.equal(state.schemaVersion, 16);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -328,6 +329,30 @@ test('NPC dossiers preserve favorite state and clean relationship references', (
   assert.deepEqual(npc.relations, []);
 });
 
+test('campaign journal links NPCs, items and relics and cleans deleted references', () => {
+  fresh(state => {
+    state.character.gear.inventory.push({ id: 'journal-map', name: 'Old Map', location: 'carried', quantity: 1 });
+    state.classes.treasureHunter.choices.subclass = 'Occult Collector';
+    state.classes.treasureHunter.choices.subclassConfirmed = true;
+    state.character.level = 3;
+  });
+  const npcId = C.saveNpc({ name: 'Professor Grey' });
+  C.addRelic('healing-amulet');
+  const relicId = S.get().classes.treasureHunter.relics[0].instanceId;
+  const entryId = C.saveJournalEntry({ title: 'The broken seal', type: 'clue', body: 'The map points east.', npcIds: [npcId], itemIds: ['journal-map'], relicIds: [relicId] });
+  let entry = S.get().campaign.journal.find(item => item.id === entryId);
+  assert.deepEqual(entry.npcIds, [npcId]);
+  assert.deepEqual(entry.itemIds, ['journal-map']);
+  assert.deepEqual(entry.relicIds, [relicId]);
+  C.deleteNpc(npcId);
+  C.removeItem('journal-map');
+  C.removeRelic(relicId);
+  entry = S.get().campaign.journal.find(item => item.id === entryId);
+  assert.deepEqual(entry.npcIds, []);
+  assert.deepEqual(entry.itemIds, []);
+  assert.deepEqual(entry.relicIds, []);
+});
+
 test('equipping and editing an item drives canonical stats and Actions', () => {
   fresh(state => {
     state.character.gear.weapons = [];
@@ -437,6 +462,23 @@ test('world currencies stay separate while total and favorite displays convert c
   assert.equal(S.get().character.gear.otherPossessions, 'A deed and a safe-deposit key.');
 });
 
+test('currency exchange applies its fee, records the transaction and can be undone', () => {
+  fresh();
+  C.adjustCurrency('italy', { g: 1 });
+  S.clearHistory();
+  const result = C.exchangeCurrency('italy', 'france-monaco', { s: 6 }, 10);
+  assert.equal(result.ok, true);
+  assert.equal(result.sentCp, 60);
+  assert.equal(result.receivedCp, 54);
+  assert.deepEqual(S.get().character.gear.currencyWallets.italy, { g: 0, s: 4, c: 0 });
+  assert.deepEqual(S.get().character.gear.currencyWallets['france-monaco'], { g: 0, s: 5, c: 4 });
+  assert.equal(S.get().character.gear.currencyTransactions.length, 1);
+  assert.equal(S.history()[0].reason, 'currency:exchange:italy:france-monaco');
+  assert.ok(S.undo());
+  assert.deepEqual(S.get().character.gear.currencyWallets.italy, { g: 1, s: 0, c: 0 });
+  assert.equal(S.get().character.gear.currencyTransactions.length, 0);
+});
+
 test('Short and Long Rest apply only the recovery choices selected', () => {
   fresh(state => {
     state.character.level = 11;
@@ -525,6 +567,48 @@ test('firearm attacks spend carried bullets individually and update their weight
   assert.equal(D.itemStackWeight(rounds), 1.8);
 });
 
+test('smart action use spends Cool, feature use and ammunition as one undoable change', () => {
+  const byName = name => [...Catalog.CURATED_FALLBACK, ...Catalog.HOME_BREW_ITEMS].find(item => item.name === name);
+  fresh(state => {
+    state.character.level = 2;
+    const firearm = Catalog.cloneForInventory(byName('Derringer'));
+    const bullets = Catalog.cloneForInventory(byName('Firearm Bullets (10)'));
+    firearm.id = 'smart-firearm'; firearm.location = 'equipped';
+    bullets.id = 'smart-bullets'; bullets.location = 'carried';
+    state.character.gear.inventory.push(firearm, bullets);
+  });
+  const result = C.executeAction({ id: 'smart-test', name: 'Smart Test', cost: 1, featureId: 'when-going-tough', uses: 1, weaponId: 'smart-firearm', spendAmmo: true });
+  assert.equal(result.ok, true);
+  assert.equal(S.get().classes.treasureHunter.coolUsed, 1);
+  assert.equal(S.get().classes.treasureHunter.featureUses['when-going-tough'], 1);
+  assert.equal(D.ammunitionCount(D.inventory().find(item => item.id === 'smart-bullets')), 9);
+  assert.equal(S.history().length, 1, 'all costs are one state transaction');
+  S.undo();
+  assert.equal(S.get().classes.treasureHunter.coolUsed, 0);
+  assert.equal(S.get().classes.treasureHunter.featureUses['when-going-tough'] || 0, 0);
+  assert.equal(D.ammunitionCount(D.inventory().find(item => item.id === 'smart-bullets')), 10);
+});
+
+test('level-up only advances one level, preserves damage and is undoable', () => {
+  fresh(state => {
+    state.character.level = 4;
+    state.character.abilities.CON = 12;
+    state.character.hp.auto = true;
+    state.character.hp.max = D.hpMax(state);
+    state.character.hp.current = state.character.hp.max - 7;
+  });
+  const beforeMax = D.hpMax();
+  assert.equal(C.levelUp(6).ok, false);
+  const result = C.levelUp(5);
+  assert.equal(result.ok, true);
+  assert.equal(D.level(), 5);
+  assert.equal(S.get().character.hp.current, D.hpMax() - 7);
+  assert.ok(D.hpMax() > beforeMax);
+  S.undo();
+  assert.equal(D.level(), 4);
+  assert.equal(D.hpMax(), beforeMax);
+});
+
 test('origin library exposes sourced traits while senses remain derived', () => {
   fresh(state => {
     state.character.origin.species = 'City Goblin';
@@ -580,21 +664,26 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.equal(app.includes("if (id === 'attack-slide')"), false, 'Attack Slide is an upgrade container, not a damage source');
   assert.match(app, /if \(id === 'line-attack'\)/);
   assert.match(app, /function filteredActionRecords/);
-  assert.match(app, /data-ammo-use=/);
-  assert.match(app, /C\.spendAmmunition/);
+  assert.match(app, /function openActionUse/);
+  assert.match(app, /C\.executeAction/);
   assert.equal(app.includes('INDYHO SKLUZ UPGRADE'), false);
   assert.equal(app.includes('ON HIT ·'), false);
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.6\.1/);
+  assert.match(index, /service-worker\.js\?v=9\.7\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
   assert.match(index, /id="builderBtn"/);
+  assert.match(index, /id="historyBtn"/);
   assert.match(index, /class="icon-btn builder-anvil"/);
   assert.equal(index.includes('id="editBtn"'), false, 'top bar has one canonical Builder entry point');
   assert.match(app, /function renderMoneyDialog/);
+  assert.match(app, /function renderBuilderLevelUp/);
+  assert.match(app, /function renderRelationMap/);
+  assert.match(app, /function renderJournal/);
+  assert.match(app, /function focusSearchResult/);
   assert.match(app, /GearRules\.WORLD_CURRENCIES/);
   assert.match(app, /\['relicsPage', 'RELICS', 'relics'\]/, 'Relics declares its subclass system dependency');
   assert.match(app, /function visiblePages/);
@@ -630,6 +719,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-13/);
-  assert.match(worker, /app-v9\.js\?v=9\.6\.1/);
+  assert.match(worker, /character-sheet-v9-ux-14/);
+  assert.match(worker, /app-v9\.js\?v=9\.7\.0/);
 });

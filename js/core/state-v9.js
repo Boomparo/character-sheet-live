@@ -4,8 +4,9 @@
   const GearRules = window.GearRulesV9;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 15;
-  const APP_VERSION = '9.6.1-ammunition-actions';
+  const SCHEMA_VERSION = 16;
+  const APP_VERSION = '9.7.0-smart-play';
+  const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
   const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
@@ -53,7 +54,7 @@
         gear: {
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
           currencyWallets: { generic: { g: 0, s: 0, c: 0 } },
-          favoriteCurrencyId: 'generic', currencyDisplayMode: 'total', otherPossessions: '',
+          favoriteCurrencyId: 'generic', currencyDisplayMode: 'total', otherPossessions: '', currencyTransactions: [],
           weapons: [], armor: [], inventory: [],
           encumbranceMode: 'basic',
           starting: { budgetGp: 0, finalized: false, remainderCp: 0, legacy: false }
@@ -83,10 +84,10 @@
         },
         occultist: {}
       },
-      campaign: { npcs: [], notes: [], tarot: {} },
+      campaign: { npcs: [], journal: [], notes: [], tarot: {} },
       ui: {
         page: 0, pageId: 'characterPage', socialTab: 'npcs', featureView: 'available', featureFilter: 'all', actionFilter: 'all',
-        npcSort: 'alphabetical',
+        npcSort: 'alphabetical', campaignView: 'directory',
         favoriteFeatures: [], favoriteActions: [], openFeatures: [], openActions: [], openRelics: [], openItems: []
       }
     };
@@ -294,6 +295,13 @@
     c.gear.currencyWallets = wallets;
     c.gear.favoriteCurrencyId = currencyIds.has(c.gear.favoriteCurrencyId) ? c.gear.favoriteCurrencyId : 'generic';
     c.gear.currencyDisplayMode = c.gear.currencyDisplayMode === 'favorite' ? 'favorite' : 'total';
+    c.gear.currencyTransactions = array(c.gear.currencyTransactions).map((entry, index) => ({
+      id: String(entry?.id || `exchange-${index + 1}`), at: String(entry?.at || ''),
+      fromId: currencyIds.has(entry?.fromId) ? entry.fromId : 'generic',
+      toId: currencyIds.has(entry?.toId) ? entry.toId : 'generic',
+      sentCp: Math.max(0, Math.floor(number(entry?.sentCp))), receivedCp: Math.max(0, Math.floor(number(entry?.receivedCp))),
+      feePercent: clamp(entry?.feePercent, 0, 100)
+    })).filter(entry => entry.fromId !== entry.toId && entry.sentCp > 0).slice(-50);
     c.gear.otherPossessions = String(c.gear.otherPossessions || '');
     c.gear.money = { gp: wallets.generic.g, ep: 0, sp: wallets.generic.s, cp: wallets.generic.c, pp: 0 };
     c.gear.encumbranceMode = ['basic', 'balanced', 'variant'].includes(c.gear.encumbranceMode) ? c.gear.encumbranceMode : 'basic';
@@ -396,11 +404,33 @@
         return true;
       });
     }
+    const journalIds = new Set();
+    const legacyNotes = sourceSchema < 16 ? array(s.campaign.notes).map((note, index) => typeof note === 'string' ? {
+      id: `legacy-note-${index + 1}`, title: `Imported note ${index + 1}`, body: note, type: 'note'
+    } : note) : [];
+    s.campaign.journal = [...array(s.campaign.journal), ...legacyNotes].map((entry, index) => {
+      entry = entry && typeof entry === 'object' ? entry : { body: String(entry || '') };
+      entry.id = stableId('journal', entry.id, index, journalIds);
+      entry.title = String(entry.title || 'Untitled entry');
+      entry.type = ['session', 'quest', 'clue', 'location', 'note'].includes(entry.type) ? entry.type : 'note';
+      entry.date = String(entry.date || '');
+      entry.location = String(entry.location || '');
+      entry.body = String(entry.body || entry.notes || '');
+      entry.favorite = !!entry.favorite;
+      entry.createdAt = String(entry.createdAt || new Date(index * 1000).toISOString());
+      entry.updatedAt = String(entry.updatedAt || entry.createdAt);
+      entry.npcIds = unique(entry.npcIds).filter(id => validNpcIds.has(id));
+      entry.itemIds = unique(entry.itemIds).filter(id => gearById.has(id));
+      entry.relicIds = unique(entry.relicIds).filter(id => th.relics.some(relic => relic.instanceId === id));
+      return entry;
+    });
+    if (sourceSchema < 16) s.campaign.notes = [];
 
     const ui = s.ui;
     ui.page = clamp(ui.page, 0, 7);
     ui.socialTab = ui.socialTab === 'bio' ? 'bio' : 'npcs';
     ui.npcSort = ['alphabetical', 'chronological', 'favorites'].includes(ui.npcSort) ? ui.npcSort : 'alphabetical';
+    ui.campaignView = ['directory', 'journal', 'relations'].includes(ui.campaignView) ? ui.campaignView : 'directory';
     ui.featureView = ui.featureView === 'progression' ? 'progression' : 'available';
     ui.featureFilter = ['all', 'active', 'passive', 'subclass'].includes(ui.featureFilter) ? ui.featureFilter : 'all';
     ui.actionFilter = ['all', 'attack', 'action', 'bonus', 'reaction', 'other'].includes(ui.actionFilter) ? ui.actionFilter : 'all';
@@ -470,6 +500,16 @@
   let state = load();
   let timer = 0;
   const listeners = new Set();
+  const undoStack = [];
+
+  function shouldTrack(reason) {
+    return !/^(ui:|derived:|history:|roster:)/.test(String(reason || ''));
+  }
+
+  function recordUndo(before, reason) {
+    undoStack.push({ before, reason: String(reason || 'update'), at: new Date().toISOString() });
+    if (undoStack.length > HISTORY_LIMIT) undoStack.splice(0, undoStack.length - HISTORY_LIMIT);
+  }
 
   function notify(reason) {
     for (const listener of listeners) {
@@ -496,19 +536,39 @@
 
   function update(mutator, reason = 'update') {
     if (typeof mutator !== 'function') throw new TypeError('State update requires a function.');
+    const before = shouldTrack(reason) ? clone(state) : null;
     mutator(state);
     state = normalize(state, { skipAbilityMigration: true });
+    if (before && JSON.stringify(before) !== JSON.stringify(state)) recordUndo(before, reason);
     save();
     notify(reason);
     return state;
   }
 
   function replace(next, reason = 'replace') {
+    if (/^roster:/.test(String(reason || ''))) clearHistory();
+    const before = shouldTrack(reason) ? clone(state) : null;
     state = normalize(next || {}, { skipAbilityMigration: Number(next?.schemaVersion) >= SCHEMA_VERSION });
+    if (before && JSON.stringify(before) !== JSON.stringify(state)) recordUndo(before, reason);
     save();
     notify(reason);
     return state;
   }
+
+  function undo() {
+    const entry = undoStack.pop();
+    if (!entry) return null;
+    state = normalize(entry.before, { skipAbilityMigration: true });
+    save();
+    notify('history:undo');
+    return { reason: entry.reason, at: entry.at };
+  }
+
+  function history() {
+    return undoStack.slice().reverse().map(({ reason, at }) => ({ reason, at }));
+  }
+
+  function clearHistory() { undoStack.length = 0; }
 
   function modifier(score) { return Math.floor((number(score, 10) - 10) / 2); }
   function signed(value) { return number(value, 0) >= 0 ? `+${number(value, 0)}` : String(number(value, 0)); }
@@ -538,7 +598,7 @@
   const api = {
     KEY, LEGACY_KEYS, SCHEMA_VERSION, APP_VERSION, A, ITEM_LOCATIONS,
     get: () => state,
-    update, replace, save, flush,
+    update, replace, save, flush, undo, history, clearHistory,
     fresh: () => normalize(baseState(), { skipAbilityMigration: true }),
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     modifier, signed, clone, uid, normalize, imageToThumb
