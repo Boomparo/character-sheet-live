@@ -1,14 +1,14 @@
-const CACHE = 'character-sheet-v9-ux-11';
+const CACHE = 'character-sheet-v9-ux-12';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/v7s.css', './css/ux-v7s.css', './css/modular-v7s.css', './css/enhancements-v7s.css',
-  './css/compact-ux-v7s.css', './css/gameplay-polish-v7s.css', './css/v9.css?v=9.5.1',
+  './css/compact-ux-v7s.css', './css/gameplay-polish-v7s.css', './css/v9.css?v=9.6.0',
   './js/classes/treasure-hunter/data-v7s.js', './js/classes/treasure-hunter/relics-v7s.js',
-  './js/classes/treasure-hunter/choices-v7s.js', './js/core/gear-rules-v9.js?v=9.5.1',
-  './js/classes/treasure-hunter/content-v9.js?v=9.5.1', './js/core/state-v9.js?v=9.5.1',
-  './js/core/rules-2024.js?v=9.5.1', './js/core/origin-v9.js?v=9.5.1',
-  './js/core/derived-v9.js?v=9.5.1', './js/core/commands-v9.js?v=9.5.1', './js/core/roster-v9.js?v=9.5.1',
-  './js/core/catalog-srd.js?v=9.5.1', './js/ui/portrait-cropper.js?v=9.5.1', './js/ui/app-v9.js?v=9.5.1',
+  './js/classes/treasure-hunter/choices-v7s.js', './js/core/gear-rules-v9.js?v=9.6.0',
+  './js/classes/treasure-hunter/content-v9.js?v=9.6.0', './js/core/state-v9.js?v=9.6.0',
+  './js/core/rules-2024.js?v=9.6.0', './js/core/origin-v9.js?v=9.6.0',
+  './js/core/derived-v9.js?v=9.6.0', './js/core/commands-v9.js?v=9.6.0', './js/core/roster-v9.js?v=9.6.0',
+  './js/core/catalog-srd.js?v=9.6.0', './js/ui/portrait-cropper.js?v=9.6.0', './js/ui/app-v9.js?v=9.6.0',
   './assets/icon.svg', './assets/treasure-ornament.svg'
 ];
 

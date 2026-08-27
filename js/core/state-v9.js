@@ -5,7 +5,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 15;
-  const APP_VERSION = '9.5.1-inventory-currencies';
+  const APP_VERSION = '9.6.0-ammunition-actions';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
   const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
@@ -133,6 +133,14 @@
       const inferredType = item.isContainer ? 'container' : item.raw?.weapon_category || item.raw?.damage?.damage_dice ? 'weapon' : rawArmor === 'shield' ? 'shield' : rawArmor ? 'armor' : 'item';
       item.itemType = ['item', 'weapon', 'armor', 'shield', 'container'].includes(item.itemType) ? item.itemType : inferredType;
       if (item.itemType === 'container') item.isContainer = true;
+      const ammunition = (item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`);
+      if (ammunition) {
+        const hadBundleSize = item.bundleSize != null && item.bundleSize !== '';
+        const bundleSize = Math.max(1, Math.floor(number(item.bundleSize, item.quantity)));
+        item.bundleSize = bundleSize;
+        item.ammunitionCount = Math.max(0, Math.floor(number(item.ammunitionCount, hadBundleSize ? bundleSize * item.quantity : item.quantity)));
+        if (!hadBundleSize && item.quantity > 1) item.quantity = 1;
+      }
       if (GearRules?.applyItemWeight) GearRules.applyItemWeight(item);
       item.containerId = item.containerId ? String(item.containerId) : '';
       for (const key of ['acBonus', 'speedBonus', 'initiativeBonus', 'attackBonus', 'damageBonus']) {

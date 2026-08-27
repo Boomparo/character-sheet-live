@@ -51,7 +51,7 @@
     'at-right-moment': 'wealth-and-glory', 'free-trick': 'wealth-and-glory'
   };
   const ATTACK_FEATURES = new Set([
-    'whip-master', 'object-manipulation', 'snatch-item', 'attack-slide', 'precision-slide', 'line-attack',
+    'whip-master', 'object-manipulation', 'snatch-item', 'precision-slide', 'line-attack',
     'adventurers-rope', 'rope-snare', 'rope-pull', 'rope-takedown', 'quick-rope', 'extra-attack',
     'daring-strike', 'improved-daring', 'superior-daring', 'legendary-slide', 'at-right-moment'
   ]);
@@ -110,8 +110,15 @@
   }
 
   function featureDamageBadge(id, source = state()) {
-    if (id === 'attack-slide') return `PRECISION +${coolDice(1, source)} DMG`;
     if (id === 'precision-slide') return `+${coolDice(1, source)} DMG`;
+    if (id === 'line-attack') {
+      const weapon = D.weaponAttacks(source).filter(attack => !attack.firearm && !/ranged/i.test(`${attack.category || ''} ${attack.raw?.weapon_range || ''}`))
+        .sort((a, b) => String(b.damageDice || '').localeCompare(String(a.damageDice || ''), undefined, { numeric: true }))[0];
+      if (!weapon || weapon.damageDice === '—') return 'EQUIP MELEE WEAPON FOR DMG';
+      const nextDice = [weapon.damageDice];
+      if (D.level(source) >= 11 && coolDice(1, source) !== weapon.damageDice) nextDice.push(coolDice(1, source));
+      return `1ST ${weapon.headerDamage} · NEXT ${nextDice.join(' / ')}`;
+    }
     if (['daring-strike', 'improved-daring', 'superior-daring'].includes(id)) {
       const count = D.level(source) >= 17 ? 3 : D.level(source) >= 13 ? 2 : 1;
       return `+${coolDice(count, source)} DMG`;
@@ -239,13 +246,17 @@
   function allActionRecords() {
     const source = state();
     const records = [];
-    D.weaponAttacks(source).forEach(weapon => records.push({
-      id: `weapon:${weapon.id}`, name: weapon.name, action: 'Action', source: 'Weapon', group: 'weapons',
-      summary: [weapon.rangeText ? `Range: ${weapon.rangeText}` : '', weapon.propertiesText ? `Properties: ${weapon.propertiesText}` : '', weapon.description || ''].filter(Boolean).join('\n'),
-      hit: S.signed(weapon.hit), damage: weapon.damage, headerDamage: weapon.headerDamage, damageType: weapon.damageType, mastery: weapon.mastery,
-      masteryDescription: weapon.masteryDescription, masterySources: weapon.masterySources,
-      effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], ability: weapon.ability, isAttack: true
-    }));
+    D.weaponAttacks(source).forEach(weapon => {
+      const ammunition = weapon.firearm ? D.ammunitionSummaryForWeapon(weapon, source) : null;
+      records.push({
+        id: `weapon:${weapon.id}`, weaponId: weapon.id, name: weapon.name, action: 'Action', source: 'Weapon', group: 'weapons',
+        summary: [weapon.rangeText ? `Range: ${weapon.rangeText}` : '', weapon.propertiesText ? `Properties: ${weapon.propertiesText}` : '', weapon.description || ''].filter(Boolean).join('\n'),
+        hit: S.signed(weapon.hit), damage: weapon.damage, headerDamage: weapon.headerDamage, damageType: weapon.damageType, mastery: weapon.mastery,
+        masteryDescription: weapon.masteryDescription, masterySources: weapon.masterySources,
+        effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], ability: weapon.ability, isAttack: true,
+        ammunition
+      });
+    });
     records.push(...D.itemActions(source));
     (source.character.spells || []).forEach(spell => records.push({ ...spell, id: `spell:${spell.id}`, source: spell.source || 'Spell', group: 'spells', isAttack: !!spell.isAttack }));
     if (D.subclassHasSystem('relics', source)) {
@@ -289,14 +300,15 @@
     const favorite = source.ui.favoriteActions.includes(record.id);
     const roll = record.isAttack ? rollIndicator(D.effectiveRollMode('attack', record.ability || '', source)) : '';
     const hasHit = record.hit !== undefined && record.hit !== null && record.hit !== '';
-    const mastery = record.mastery ? `<div class="mastery-callout"><b>ON HIT · ${esc(record.mastery)} mastery</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.join(' · '))}</small>` : ''}</div>` : '';
+    const mastery = record.mastery ? `<div class="mastery-callout"><b>MASTERY · ${esc(record.mastery)}</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.join(' · '))}</small>` : ''}</div>` : '';
     const effects = (record.effects || []).map(effect => `<div class="action-effect"><b>${esc(effect.name)}</b><span>${nl(effect.summary || '')}</span><small>${esc(effect.source || '')}</small></div>`).join('');
     const breakdown = record.attackBreakdown?.length ? `<details class="attack-breakdown"><summary>Attack calculation</summary><div class="formula-list">${record.attackBreakdown.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></details>` : '';
     const fullDamage = record.damage ? `<div class="action-damage-detail"><b>DAMAGE</b><span>${esc(record.damage)}</span></div>` : '';
     const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(record.name)}"><b>${record.cost}</b><span>COOL</span></button>` : '';
+    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-ammo-use="${esc(record.weaponId)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(record.name)} and spend one ${esc(record.ammunition.type || 'bullet')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}">
-      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">ON HIT · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
+      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
       <div class="row-detail">${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
@@ -319,11 +331,24 @@
     return actionFilterKey(record.action) === filter;
   }
 
+  function filteredActionRecords(records, filter) {
+    if (filter === 'all') return records;
+    const included = new Set(records.filter(record => actionMatchesFilter(record, filter)).map(record => record.id));
+    let added = true;
+    while (added) {
+      added = false;
+      for (const record of records) {
+        if (!included.has(record.id) && included.has(record.parentId)) { included.add(record.id); added = true; }
+      }
+    }
+    return records.filter(record => included.has(record.id));
+  }
+
   function renderActions() {
     const source = state();
     const allRecords = allActionRecords();
     const selectedFilter = source.ui.actionFilter || 'all';
-    const records = allRecords.filter(record => actionMatchesFilter(record, selectedFilter));
+    const records = filteredActionRecords(allRecords, selectedFilter);
     const favoriteIds = source.ui.favoriteActions;
     const coolTotal = T.coolTotal(D.level(source));
     const coolUsed = Math.min(coolTotal, Number(source.classes.treasureHunter.coolUsed) || 0);
@@ -408,9 +433,8 @@
     const choiceMissing = feature.level <= D.level(source) && featureChoiceIncomplete(feature, source);
     const subclassFeature = D.featureSubclassDefinition(feature);
     const damageBonus = featureDamageBadge(feature.id, source);
-    const slideUpgrade = ['attack-slide', 'precision-slide', 'line-attack'].includes(feature.id);
     return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}">
-      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><span class="action-title-line"><strong>${esc(feature.name)}</strong>${damageBonus ? `<b class="damage-bonus-chip">${esc(damageBonus)}</b>` : ''}</span><span class="row-meta"><span>Level ${feature.level}</span>${slideUpgrade ? '<span class="upgrade-inline">INDYHO SKLUZ UPGRADE</span>' : ''}${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span>${feature.cost} Cool</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
+      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><span class="action-title-line"><strong>${esc(feature.name)}</strong>${damageBonus ? `<b class="damage-bonus-chip">${esc(damageBonus)}</b>` : ''}</span><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span class="feature-cool-cost">${feature.cost} COOL</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
       <div class="row-detail">${rulesText(feature.fullText || feature.summary, source)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
     </article>`;
   }
@@ -544,6 +568,7 @@
     const active = D.isItemActive(item);
     const effectiveLocation = effectiveItemLocation(item, context);
     const stackWeight = D.itemStackWeight(item);
+    const ammunitionCount = D.ammunitionCount(item);
     const keyStats = D.itemKeyStats(item);
     const locationText = parent ? `In ${parent.name} · ${LOCATION_LABELS[effectiveLocation] || effectiveLocation}` : LOCATION_LABELS[effectiveLocation] || effectiveLocation;
     const fields = Catalog ? Catalog.displayFields(item).map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('') : '';
@@ -566,14 +591,14 @@
     const equipButton = !item.isContainer ? `<button type="button" class="small-btn item-equip ${equipped ? 'primary' : ''}" data-item-equip="${esc(item.id)}">${equipped ? 'Unequip' : 'Equip'}</button>` : '';
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
     return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}">
-      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
-      <div class="inventory-detail">${activationNote}${weightNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label><label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label><label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
+      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${ammunitionCount != null ? `<span class="ammo-count-chip">AMMO ${ammunitionCount}</span>` : item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
+      <div class="inventory-detail">${activationNote}${weightNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
   }
 
   function moneyCoin(key, amount, denomination = '') {
     const definition = { g: ['G', 'gold'], s: ['S', 'silver'], c: ['C', 'copper'] }[key];
-    return `<span class="money-total ${definition[1]}" title="${esc(denomination)}"><i>${definition[0]}</i><b>${Math.max(0, Math.floor(Number(amount) || 0))}</b></span>`;
+    return `<span class="money-total ${definition[1]}" title="${esc(denomination)}"><b>${Math.max(0, Math.floor(Number(amount) || 0))}</b><i>${definition[0]}</i></span>`;
   }
 
   function equipmentGroup(item) {
@@ -1003,7 +1028,7 @@
     const currencyOptions = GearRules.WORLD_CURRENCIES.map(currency => `<option value="${currency.id}" ${currency.id === active.id ? 'selected' : ''}>${esc(currency.region)} · ${esc(currency.name)}</option>`).join('');
     const ownedRows = summary.owned.sort((a, b) => Number(b.id === summary.favoriteId) - Number(a.id === summary.favoriteId) || a.region.localeCompare(b.region)).map(currency => `<button type="button" class="currency-account ${currency.id === active.id ? 'active' : ''}" data-currency-select="${currency.id}"><span><b>${currency.id === summary.favoriteId ? '★ ' : ''}${esc(currency.name)}</b><small>${esc(currency.region)}</small></span><em>${currency.wallet.g} G · ${currency.wallet.s} S · ${currency.wallet.c} C</em></button>`).join('');
     const total = D.cpCoins(summary.totalCp);
-    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove. Each national currency remains separate; the top total is converted automatically.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="0" placeholder="+ / −"></label>`).join('')}</div><menu><button value="cancel" class="ghost">Close</button><button type="submit" class="primary">Apply change</button></menu></form>`;
+    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove. Each national currency remains separate; the top total is converted automatically.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="" placeholder="+ / −"></label>`).join('')}</div><menu><button value="cancel" class="ghost">Close</button><button type="submit" class="primary">Apply change</button></menu></form>`;
   }
 
   function openMoney() {
@@ -1448,6 +1473,11 @@
     if (button.dataset.actionFilter) { C.setUi('actionFilter', button.dataset.actionFilter); return; }
     if (button.dataset.actionToggle) { C.toggleOpen('action', button.dataset.actionToggle); return; }
     if (button.dataset.actionFavorite) { C.toggleFavorite('action', button.dataset.actionFavorite); return; }
+    if (button.dataset.ammoUse) {
+      const result = C.spendAmmunition(button.dataset.ammoUse);
+      toast(result.ok ? `Attack recorded · 1 ${result.type || 'bullet'} spent · ${result.remaining} left.` : 'No carried bullets available.', result.ok ? 'success' : 'warn');
+      return;
+    }
     if (button.dataset.actionUse) { useAction(button.dataset.actionUse); return; }
     if (button.hasAttribute('data-new-action')) { $('#actionForm').reset(); showDialog('#actionDialog'); return; }
     if (button.dataset.customActionRemove) { if (confirm('Delete this custom action?')) C.removeCustomAction(button.dataset.customActionRemove); return; }
@@ -1608,7 +1638,7 @@
         const destination = target.value ? { containerId: target.value } : { location: findGearItem(target.dataset.itemId)?.location || 'carried', containerId: '' };
         const result = C.moveItem(target.dataset.itemId, destination);
         if (!result.ok) toast('That container would create an invalid nesting.', 'warn');
-      } else C.updateItem(target.dataset.itemId, { [target.dataset.itemField]: target.type === 'checkbox' ? target.checked : target.dataset.itemField === 'quantity' ? Math.max(1, Number(target.value) || 1) : target.value });
+      } else C.updateItem(target.dataset.itemId, { [target.dataset.itemField]: target.type === 'checkbox' ? target.checked : target.dataset.itemField === 'quantity' ? Math.max(1, Number(target.value) || 1) : target.dataset.itemField === 'ammunitionCount' ? Math.max(0, Number(target.value) || 0) : target.value });
       return;
     }
     if (target.dataset.rollMode) { C.setRollMode(target.dataset.rollMode, target.dataset.rollKey || '', target.value); closeDialog('#statDialog'); return; }

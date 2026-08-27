@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.5.1-inventory-currencies');
+assert.equal(S.APP_VERSION, '9.6.0-ammunition-actions');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -495,6 +495,35 @@ test('catalog exposes official prices, containers, tags and Luky firearm variant
   assert.ok(firearms['Mondrogón M 1908'].tags.includes('homebrew'));
 });
 
+test('firearm attacks spend carried bullets individually and update their weight', () => {
+  const byName = name => [...Catalog.CURATED_FALLBACK, ...Catalog.HOME_BREW_ITEMS].find(item => item.name === name);
+  fresh(state => {
+    const backpack = Catalog.cloneForInventory(byName('Backpack'));
+    const firearm = Catalog.cloneForInventory(byName('Derringer'));
+    const carriedBullets = Catalog.cloneForInventory(byName('Firearm Bullets (10)'));
+    const storedBullets = Catalog.cloneForInventory(byName('Firearm Bullets (10)'));
+    backpack.id = 'ammo-bag';
+    backpack.location = 'back';
+    firearm.id = 'test-firearm';
+    firearm.location = 'equipped';
+    carriedBullets.id = 'carried-bullets';
+    carriedBullets.location = 'back';
+    carriedBullets.containerId = backpack.id;
+    storedBullets.id = 'stored-bullets';
+    storedBullets.location = 'storage';
+    state.character.gear.inventory.push(backpack, firearm, carriedBullets, storedBullets);
+  });
+  const attack = D.weaponAttacks().find(item => item.id === 'test-firearm');
+  assert.equal(attack.firearm, true);
+  assert.equal(D.ammunitionSummaryForWeapon(attack).total, 10, 'storage ammunition is not available to an attack');
+  assert.equal(D.itemStackWeight(D.inventory().find(item => item.id === 'carried-bullets')), 2);
+  const spent = C.spendAmmunition('test-firearm');
+  assert.deepEqual({ ok: spent.ok, remaining: spent.remaining }, { ok: true, remaining: 9 });
+  const rounds = D.inventory().find(item => item.id === 'carried-bullets');
+  assert.equal(rounds.ammunitionCount, 9);
+  assert.equal(D.itemStackWeight(rounds), 1.8);
+});
+
 test('origin library exposes sourced traits while senses remain derived', () => {
   fresh(state => {
     state.character.origin.species = 'City Goblin';
@@ -546,9 +575,18 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
   assert.match(app, /return `\$\{Math\.max\(1, Number\(count\) \|\| 1\)\}\$\{die\}`/, 'Cool die always includes its quantity, for example 1d8');
-  assert.match(app, /PRECISION \+\$\{coolDice\(1, source\)\} DMG/);
+  assert.match(app, /if \(id === 'precision-slide'\) return `\+\$\{coolDice\(1, source\)\} DMG`/);
+  assert.equal(app.includes("if (id === 'attack-slide')"), false, 'Attack Slide is an upgrade container, not a damage source');
+  assert.match(app, /if \(id === 'line-attack'\)/);
+  assert.match(app, /function filteredActionRecords/);
+  assert.match(app, /data-ammo-use=/);
+  assert.match(app, /C\.spendAmmunition/);
+  assert.equal(app.includes('INDYHO SKLUZ UPGRADE'), false);
+  assert.equal(app.includes('ON HIT ·'), false);
+  assert.match(app, /value="" placeholder="\+ \/ −"/);
+  assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.5\.1/);
+  assert.match(index, /service-worker\.js\?v=9\.6\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -579,7 +617,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /data-item-equip/);
   assert.equal(app.includes('data-builder-tab="progression"'), false, 'Progression belongs only on Features');
   assert.match(app, /Proficiencies & Masteries/);
-  assert.match(app, /ON HIT · \$\{esc\(record\.mastery\)\}/);
+  assert.match(app, /MASTERY · \$\{esc\(record\.mastery\)\}/);
   assert.equal(app.includes("section('Origin'"), false, 'passive origin cards belong on Features, not Character');
   assert.match(v9Css, /\.row-main-wrap\.has-cool-cost/);
   assert.match(v9Css, /\.hp-wheel-marker/);
@@ -591,6 +629,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-11/);
-  assert.match(worker, /app-v9\.js\?v=9\.5\.1/);
+  assert.match(worker, /character-sheet-v9-ux-12/);
+  assert.match(worker, /app-v9\.js\?v=9\.6\.0/);
 });

@@ -286,6 +286,7 @@
     const bundleSize = Math.max(1, Math.floor(Number(copy.quantity) || 1));
     if (bundleSize > 1) {
       copy.bundleSize = bundleSize;
+      copy.ammunitionCount = bundleSize;
       if (!new RegExp(`\\(${bundleSize}\\)`).test(copy.name)) copy.name = `${copy.name} (${bundleSize})`;
     }
     copy.quantity = 1;

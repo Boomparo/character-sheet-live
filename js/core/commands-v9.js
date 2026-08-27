@@ -532,6 +532,20 @@
     }, 'item:remove');
   }
 
+  function spendAmmunition(weaponId) {
+    const source = S.get();
+    const weapon = D.weaponAttacks(source, { includeUnequipped: true }).find(attack => attack.id === weaponId);
+    if (!weapon?.firearm) return { ok: false, reason: 'weapon' };
+    const summary = D.ammunitionSummaryForWeapon(weapon, source);
+    const stack = summary.entries.find(entry => entry.count > 0);
+    if (!stack) return { ok: false, reason: 'empty', type: summary.type, remaining: 0 };
+    update(state => {
+      const item = findItem(state, stack.item.id);
+      if (item) item.ammunitionCount = Math.max(0, D.ammunitionCount(item) - 1);
+    }, 'ammunition:spend');
+    return { ok: true, type: summary.type, itemId: stack.item.id, remaining: Math.max(0, summary.total - 1) };
+  }
+
   function setEncumbranceMode(mode) {
     if (!['basic', 'balanced', 'variant'].includes(mode)) return false;
     update(state => { state.character.gear.encumbranceMode = mode; }, 'gear:encumbrance');
@@ -741,7 +755,7 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, moveItem, setItemEquipped, removeItem, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, spendAmmunition, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
     setMoney, adjustMoney, adjustCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
   };

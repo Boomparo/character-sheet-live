@@ -83,7 +83,9 @@
   function itemStackWeight(item) {
     const unit = item?.weight ?? item?.raw?.weight;
     if (unit == null || unit === '' || !Number.isFinite(Number(unit))) return null;
-    return Math.round(Math.max(0, number(unit)) * Math.max(1, number(item.quantity, 1)) * 100) / 100;
+    const rounds = ammunitionCount(item);
+    const multiplier = rounds == null ? Math.max(1, number(item.quantity, 1)) : rounds / Math.max(1, number(item.bundleSize, 1));
+    return Math.round(Math.max(0, number(unit)) * multiplier * 100) / 100;
   }
 
   function effectiveItemLocation(item, value) {
@@ -674,6 +676,50 @@
     return unique([...displayValues(item?.properties), ...displayValues(item?.raw?.properties)]);
   }
 
+  function weaponAmmunitionType(item) {
+    for (const property of weaponProperties(item)) {
+      const match = String(property).match(/^Ammunition(?:\s*\(([^)]+)\))?/i);
+      if (match) return String(match[1] || item?.ammunition || '').trim();
+    }
+    return String(item?.ammunition || '').trim();
+  }
+
+  function isAmmunitionItem(item) {
+    return !!item && ((item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`));
+  }
+
+  function ammunitionCount(item) {
+    if (!isAmmunitionItem(item)) return null;
+    const fallback = item?.bundleSize ?? item?.quantity ?? 0;
+    return Math.max(0, Math.floor(number(item?.ammunitionCount, fallback)));
+  }
+
+  function ammunitionMatches(item, type) {
+    if (!isAmmunitionItem(item)) return false;
+    const expected = String(type || '').toLowerCase();
+    const name = String(item.name || '').toLowerCase();
+    if (expected.includes('sling')) return /sling.*bullet/.test(name);
+    if (expected.includes('bullet')) return /bullet/.test(name) && !/sling/.test(name);
+    if (expected.includes('arrow')) return /arrow/.test(name);
+    if (expected.includes('bolt')) return /bolt/.test(name);
+    if (expected.includes('needle')) return /needle/.test(name);
+    return expected ? name.includes(expected.replace(/s$/, '')) : false;
+  }
+
+  function ammunitionEntriesForWeapon(weapon, value) {
+    const source = state(value);
+    const type = weapon?.ammunitionType || weaponAmmunitionType(weapon);
+    if (!type) return [];
+    return inventory(source).filter(item => ammunitionMatches(item, type) && !['ground', 'storage'].includes(effectiveItemLocation(item, source)))
+      .map(item => ({ item, count: ammunitionCount(item) }));
+  }
+
+  function ammunitionSummaryForWeapon(weapon, value) {
+    const type = weapon?.ammunitionType || weaponAmmunitionType(weapon);
+    const entries = ammunitionEntriesForWeapon(weapon, value);
+    return { type, total: entries.reduce((total, entry) => total + entry.count, 0), entries };
+  }
+
   function weaponAttacks(value, options = {}) {
     const source = state(value);
     const gear = source.character.gear || {};
@@ -697,6 +743,8 @@
       if (String(canonicalName).toLowerCase() === 'whip' && level(source) >= 1) masterySources.push('Mistr biče');
       if (selectedMasteries.some(name => String(name).toLowerCase() === String(canonicalName).toLowerCase() || String(name).toLowerCase() === String(item.name || '').toLowerCase())) masterySources.push('Weapon Mastery');
       const activeMastery = masterySources.length ? masteryProperty : '';
+      const ammoType = weaponAmmunitionType(item);
+      const firearm = !!item.firearm || (item.tags || []).includes('firearm') || (/bullet/i.test(ammoType) && /ranged/i.test(`${item.category || ''} ${raw.weapon_range || ''}`));
       const effects = Origin.backgroundFeat(source) === 'Savage Attacker' ? [{ name: 'Savage Attacker', source: Origin.BACKGROUND.name, summary: Origin.BACKGROUND.feats['Savage Attacker'].description }] : [];
       return {
         ...item, ability: abilityKey, hit: mod(abilityKey, source) + pb(source) + enhancement,
@@ -704,6 +752,7 @@
         headerDamage: `${dice}${damageModifier ? signed(damageModifier) : ''}`, damageDice: dice, damageModifier, damageType: type,
         mastery: activeMastery, masteryProperty, masterySources,
         masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || '' : '',
+        ammunitionType: ammoType, firearm,
         rangeText: weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
         attackBreakdown: [['Ability', `${abilityKey} ${signed(mod(abilityKey, source))}`], ['Proficiency Bonus', signed(pb(source))], ...(enhancement ? [['Weapon bonuses', signed(enhancement)]] : [])]
       };
@@ -770,6 +819,7 @@
     SKILLS, ARMOR, state, level, pb, subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
     ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
     walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,
+    weaponAmmunitionType, isAmmunitionItem, ammunitionCount, ammunitionEntriesForWeapon, ammunitionSummaryForWeapon,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
     saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
     choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, fixedInitiative, fixedSave, fixedSkill,
