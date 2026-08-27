@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.6.0-ammunition-actions');
+assert.equal(S.APP_VERSION, '9.6.1-ammunition-actions');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -515,6 +515,7 @@ test('firearm attacks spend carried bullets individually and update their weight
   });
   const attack = D.weaponAttacks().find(item => item.id === 'test-firearm');
   assert.equal(attack.firearm, true);
+  assert.equal(D.ammunitionCount(attack), null, 'a weapon that uses ammunition is not itself an ammunition stack');
   assert.equal(D.ammunitionSummaryForWeapon(attack).total, 10, 'storage ammunition is not available to an attack');
   assert.equal(D.itemStackWeight(D.inventory().find(item => item.id === 'carried-bullets')), 2);
   const spent = C.spendAmmunition('test-firearm');
@@ -586,7 +587,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.6\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.6\.1/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -629,6 +630,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-12/);
-  assert.match(worker, /app-v9\.js\?v=9\.6\.0/);
+  assert.match(worker, /character-sheet-v9-ux-13/);
+  assert.match(worker, /app-v9\.js\?v=9\.6\.1/);
 });

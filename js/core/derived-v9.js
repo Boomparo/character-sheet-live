@@ -685,7 +685,7 @@
   }
 
   function isAmmunitionItem(item) {
-    return !!item && ((item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`));
+    return !!item && !isWeapon(item) && ((item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`));
   }
 
   function ammunitionCount(item) {
