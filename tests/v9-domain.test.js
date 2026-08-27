@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.5.0-inventory-currencies');
+assert.equal(S.APP_VERSION, '9.5.1-inventory-currencies');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -480,6 +480,7 @@ test('catalog exposes official prices, containers, tags and Luky firearm variant
   assert.equal([...Catalog.CURATED_FALLBACK, ...Catalog.HOME_BREW_ITEMS].every(item => Number.isFinite(Number(item.weight))), true, 'the built-in catalog never renders an unknown weight');
   assert.deepEqual(D.itemKeyStats(byName('Rapier')), ['1d8', 'Finesse', 'One-Handed']);
   assert.deepEqual(D.itemKeyStats(byName('Leather Armor')), ['Light Armor', 'AC 11']);
+  assert.deepEqual(D.itemKeyStats({ ...byName('Leather Armor'), category: 'Armor • Light Armor', raw: { ...byName('Leather Armor').raw, armor_category: 'Light' } }), ['Light Armor', 'AC 11'], 'API category breadcrumbs collapse to the useful armor category');
   const inferredRing = GearRules.inferItemWeight({ name: 'Ring of Mystery', kind: 'Magic Item', category: 'Ring' });
   assert.equal(inferredRing.value, 0.02);
   assert.equal(inferredRing.estimated, true);
@@ -547,7 +548,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /return `\$\{Math\.max\(1, Number\(count\) \|\| 1\)\}\$\{die\}`/, 'Cool die always includes its quantity, for example 1d8');
   assert.match(app, /PRECISION \+\$\{coolDice\(1, source\)\} DMG/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.5\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.5\.1/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -590,6 +591,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-10/);
-  assert.match(worker, /app-v9\.js\?v=9\.5\.0/);
+  assert.match(worker, /character-sheet-v9-ux-11/);
+  assert.match(worker, /app-v9\.js\?v=9\.5\.1/);
 });

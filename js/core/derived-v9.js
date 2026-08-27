@@ -239,7 +239,11 @@
     }
     if (isArmor(item)) {
       const formula = armorFormulaFromItem(item);
-      const category = /armor/i.test(item.category || '') ? item.category : raw.armor_category ? `${raw.armor_category} Armor` : 'Armor';
+      const rawCategory = String(raw.armor_category || '').trim();
+      const categoryParts = String(item.category || '').split('•').map(value => value.trim()).filter(Boolean);
+      const category = rawCategory
+        ? (/armor$/i.test(rawCategory) ? rawCategory : `${rawCategory} Armor`)
+        : categoryParts.find(value => /^(light|medium|heavy) armor$/i.test(value)) || categoryParts.find(value => /armor/i.test(value)) || 'Armor';
       if (category) labels.push(category);
       if (formula?.base != null) labels.push(`AC ${formula.base}`);
       return unique(labels).slice(0, 3);
