@@ -1,10 +1,11 @@
 (function () {
   'use strict';
 
+  const GearRules = window.GearRulesV9;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 14;
-  const APP_VERSION = '9.4.0-subclass-encumbrance';
+  const SCHEMA_VERSION = 15;
+  const APP_VERSION = '9.5.0-inventory-currencies';
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
   const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
@@ -51,6 +52,8 @@
         },
         gear: {
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
+          currencyWallets: { generic: { g: 0, s: 0, c: 0 } },
+          favoriteCurrencyId: 'generic', currencyDisplayMode: 'total', otherPossessions: '',
           weapons: [], armor: [], inventory: [],
           encumbranceMode: 'basic',
           starting: { budgetGp: 0, finalized: false, remainderCp: 0, legacy: false }
@@ -122,6 +125,7 @@
       item.quantity = Math.max(1, Math.floor(number(item.quantity, 1)));
       const weight = item.weight ?? item.raw?.weight;
       if (weight != null && weight !== '' && Number.isFinite(Number(weight))) item.weight = Math.max(0, number(weight));
+      else delete item.weight;
       item.modifiers = array(item.modifiers).filter(modifier => modifier && typeof modifier === 'object');
       const canonicalPack = /^(backpack|explorer['’]s pack)$/i.test(item.name.trim());
       item.isContainer = canonicalPack || (typeof item.isContainer === 'boolean' ? item.isContainer : /\b(backpack|pack|bag|sack|pouch|chest|case)\b/i.test(item.name));
@@ -129,6 +133,7 @@
       const inferredType = item.isContainer ? 'container' : item.raw?.weapon_category || item.raw?.damage?.damage_dice ? 'weapon' : rawArmor === 'shield' ? 'shield' : rawArmor ? 'armor' : 'item';
       item.itemType = ['item', 'weapon', 'armor', 'shield', 'container'].includes(item.itemType) ? item.itemType : inferredType;
       if (item.itemType === 'container') item.isContainer = true;
+      if (GearRules?.applyItemWeight) GearRules.applyItemWeight(item);
       item.containerId = item.containerId ? String(item.containerId) : '';
       for (const key of ['acBonus', 'speedBonus', 'initiativeBonus', 'attackBonus', 'damageBonus']) {
         if (item[key] != null) item[key] = number(item[key], 0);
@@ -191,6 +196,8 @@
   function normalize(state, options = {}) {
     const sourceSchema = number(state && state.schemaVersion, 0);
     const sourcePageId = state?.ui?.pageId;
+    const sourceCurrencyWallets = state?.character?.gear?.currencyWallets;
+    const sourceLegacyMoney = clone(state?.character?.gear?.money || {});
     const s = merge(baseState(), state || {});
     s.schemaVersion = SCHEMA_VERSION;
     s.appVersion = APP_VERSION;
@@ -257,7 +264,30 @@
       }
       if (cursor?.containerId && visited.has(cursor.containerId)) item.containerId = '';
     }
-    for (const coin of ['gp', 'ep', 'sp', 'cp', 'pp']) c.gear.money[coin] = Math.max(0, Math.floor(number(c.gear.money[coin], 0)));
+    const currencyIds = new Set((GearRules?.WORLD_CURRENCIES || [{ id: 'generic' }]).map(currency => currency.id));
+    const wallets = {};
+    for (const [id, wallet] of Object.entries(c.gear.currencyWallets || {})) {
+      if (!currencyIds.has(id) || !wallet || typeof wallet !== 'object') continue;
+      wallets[id] = {
+        g: Math.max(0, Math.floor(number(wallet.g, 0))),
+        s: Math.max(0, Math.floor(number(wallet.s, 0))),
+        c: Math.max(0, Math.floor(number(wallet.c, 0)))
+      };
+    }
+    if (!sourceCurrencyWallets || typeof sourceCurrencyWallets !== 'object') {
+      const legacyCp = Math.max(0, Math.floor(number(sourceLegacyMoney.pp))) * 1000 +
+        Math.max(0, Math.floor(number(sourceLegacyMoney.gp))) * 100 +
+        Math.max(0, Math.floor(number(sourceLegacyMoney.ep))) * 50 +
+        Math.max(0, Math.floor(number(sourceLegacyMoney.sp))) * 10 +
+        Math.max(0, Math.floor(number(sourceLegacyMoney.cp)));
+      wallets.generic = { g: Math.floor(legacyCp / 100), s: Math.floor(legacyCp % 100 / 10), c: legacyCp % 10 };
+    }
+    if (!wallets.generic) wallets.generic = { g: 0, s: 0, c: 0 };
+    c.gear.currencyWallets = wallets;
+    c.gear.favoriteCurrencyId = currencyIds.has(c.gear.favoriteCurrencyId) ? c.gear.favoriteCurrencyId : 'generic';
+    c.gear.currencyDisplayMode = c.gear.currencyDisplayMode === 'favorite' ? 'favorite' : 'total';
+    c.gear.otherPossessions = String(c.gear.otherPossessions || '');
+    c.gear.money = { gp: wallets.generic.g, ep: 0, sp: wallets.generic.s, cp: wallets.generic.c, pp: 0 };
     c.gear.encumbranceMode = ['basic', 'balanced', 'variant'].includes(c.gear.encumbranceMode) ? c.gear.encumbranceMode : 'basic';
     c.gear.starting = c.gear.starting && typeof c.gear.starting === 'object' ? c.gear.starting : {};
     c.gear.starting.budgetGp = Math.max(0, Math.floor(number(c.gear.starting.budgetGp, 0)));

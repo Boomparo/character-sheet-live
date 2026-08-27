@@ -6,6 +6,7 @@
   const Relics = window.TreasureHunterRelicsV7s || [];
   const Rules = window.DND2024Rules;
   const Origin = window.CharacterOrigin;
+  const GearRules = window.GearRulesV9;
   if (!S || !T || !Rules || !Origin) return;
 
   const SKILLS = {
@@ -114,6 +115,33 @@
     return { total: Math.round(total * 100) / 100, unknown };
   }
 
+  function walletCp(wallet) {
+    return Math.max(0, Math.floor(number(wallet?.g))) * 100 +
+      Math.max(0, Math.floor(number(wallet?.s))) * 10 +
+      Math.max(0, Math.floor(number(wallet?.c)));
+  }
+
+  function cpCoins(cp) {
+    const total = Math.max(0, Math.floor(number(cp)));
+    return { g: Math.floor(total / 100), s: Math.floor(total % 100 / 10), c: total % 10 };
+  }
+
+  function currencySummary(value) {
+    const source = state(value);
+    const gear = source.character.gear || {};
+    const wallets = gear.currencyWallets || { generic: { g: number(gear.money?.gp), s: number(gear.money?.sp), c: number(gear.money?.cp) } };
+    const totalCp = Object.values(wallets).reduce((total, wallet) => total + walletCp(wallet), 0);
+    const favoriteId = GearRules?.CURRENCY_BY_ID?.has(gear.favoriteCurrencyId) ? gear.favoriteCurrencyId : 'generic';
+    const favorite = GearRules?.currency?.(favoriteId) || { id: 'generic', region: 'Unsorted', name: 'Generic currency', denominations: { g: 'Gold', s: 'Silver', c: 'Copper' } };
+    const mode = gear.currencyDisplayMode === 'favorite' ? 'favorite' : 'total';
+    const amounts = mode === 'favorite' ? { g: number(wallets[favoriteId]?.g), s: number(wallets[favoriteId]?.s), c: number(wallets[favoriteId]?.c) } : cpCoins(totalCp);
+    const owned = (GearRules?.WORLD_CURRENCIES || [favorite]).filter(currency => {
+      const wallet = wallets[currency.id];
+      return currency.id === favoriteId || currency.id === 'generic' || walletCp(wallet) > 0;
+    }).map(currency => ({ ...currency, wallet: wallets[currency.id] || { g: 0, s: 0, c: 0 }, valueCp: walletCp(wallets[currency.id]) }));
+    return { wallets, totalCp, favoriteId, favorite, mode, amounts, owned };
+  }
+
   function encumbrance(value) {
     const source = state(value);
     const strength = ability('STR', source);
@@ -124,13 +152,15 @@
     const balancedLimit = strength * 10 * sizeMultiplier;
     const lightLimit = strength * 5 * sizeMultiplier;
     const heavyLimit = strength * 10 * sizeMultiplier;
-    const limit = mode === 'balanced' ? balancedLimit : standardLimit;
+    const limit = mode === 'variant' ? lightLimit : mode === 'balanced' ? balancedLimit : standardLimit;
     let status = 'normal', statusLabel = 'Within capacity', speedPenalty = 0;
-    if (load.total > limit) { status = 'over'; statusLabel = 'Over carrying capacity'; speedPenalty = mode === 'variant' ? 20 : 0; }
-    else if (mode === 'variant' && load.total > heavyLimit) { status = 'heavy'; statusLabel = 'Heavily encumbered'; speedPenalty = 20; }
-    else if (mode === 'variant' && load.total > lightLimit) { status = 'encumbered'; statusLabel = 'Encumbered'; speedPenalty = 10; }
+    if (mode === 'variant') {
+      if (load.total > standardLimit) { status = 'over'; statusLabel = 'Over maximum capacity'; speedPenalty = 20; }
+      else if (load.total > heavyLimit) { status = 'heavy'; statusLabel = 'Heavily encumbered'; speedPenalty = 20; }
+      else if (load.total > lightLimit) { status = 'encumbered'; statusLabel = 'Encumbered'; speedPenalty = 10; }
+    } else if (load.total > limit) { status = 'over'; statusLabel = 'Over carrying capacity'; }
     return {
-      mode, modeLabel: mode === 'variant' ? 'Variant Encumbrance' : mode === 'balanced' ? 'Expedition · STR ×10' : 'Basic · STR ×15',
+      mode, modeLabel: mode === 'variant' ? 'Variant · STR ×5' : mode === 'balanced' ? 'Expedition · STR ×10' : 'Basic · STR ×15',
       strength, sizeMultiplier, weight: load.total, unknownWeights: load.unknown, limit,
       standardLimit, lightLimit, heavyLimit, pushDragLift: strength * 30 * sizeMultiplier,
       status, statusLabel, speedPenalty
@@ -188,6 +218,41 @@
   function isArmor(item) {
     const raw = item?.raw || {};
     return !!item && !isShield(item) && (item.itemType === 'armor' || raw.armor_category || !!armorKeyFromName(item.name));
+  }
+
+  function itemKeyStats(item) {
+    if (!item) return [];
+    const raw = item.raw || {};
+    const labels = [];
+    const properties = unique([...(item.properties || []), ...(raw.properties || [])].map(entry => typeof entry === 'object' ? entry.name || entry.index || '' : String(entry)).filter(Boolean));
+    if (isWeapon(item)) {
+      const damage = item.damage || raw.damage?.damage_dice;
+      if (damage) labels.push(String(damage));
+      const priority = ['Finesse', 'Light', 'Reach', 'Heavy', 'Loading', 'Two-Handed'];
+      for (const property of priority) if (properties.some(value => value.toLowerCase().startsWith(property.toLowerCase()))) labels.push(property);
+      if (!properties.some(value => /two-handed/i.test(value))) labels.push('One-Handed');
+      return unique(labels).slice(0, 4);
+    }
+    if (isShield(item)) {
+      const bonus = item.acBonus ?? raw.armor_class?.base ?? 2;
+      return ['Shield', `AC +${Math.max(0, number(bonus, 2))}`];
+    }
+    if (isArmor(item)) {
+      const formula = armorFormulaFromItem(item);
+      const category = /armor/i.test(item.category || '') ? item.category : raw.armor_category ? `${raw.armor_category} Armor` : 'Armor';
+      if (category) labels.push(category);
+      if (formula?.base != null) labels.push(`AC ${formula.base}`);
+      return unique(labels).slice(0, 3);
+    }
+    const modifiers = [
+      ['AC', item.acBonus], ['Speed', item.speedBonus, ' ft.'], ['Initiative', item.initiativeBonus],
+      ['Hit', item.attackBonus], ['Damage', item.damageBonus]
+    ];
+    for (const [label, value, suffix = ''] of modifiers) if (number(value)) labels.push(`${label} ${signed(value)}${suffix}`);
+    if (item.resistance) labels.push(`${item.resistance} Resistance`);
+    if (item.immunity) labels.push(`${item.immunity} Immunity`);
+    if (item.conditionImmunity) labels.push(`${item.conditionImmunity} Immunity`);
+    return unique(labels).slice(0, 4);
   }
 
   function armorFormulaFromItem(item) {
@@ -632,6 +697,7 @@
       return {
         ...item, ability: abilityKey, hit: mod(abilityKey, source) + pb(source) + enhancement,
         damage: `${dice}${damageModifier ? ` ${signed(damageModifier)}` : ''}${type ? ` ${type}` : ''}`,
+        headerDamage: `${dice}${damageModifier ? signed(damageModifier) : ''}`, damageDice: dice, damageModifier, damageType: type,
         mastery: activeMastery, masteryProperty, masterySources,
         masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || '' : '',
         rangeText: weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
@@ -699,7 +765,7 @@
   window.CharacterDerived = {
     SKILLS, ARMOR, state, level, pb, subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
     ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
-    isItemEquipped, isItemActive, isWeapon, isArmor, isShield,
+    walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
     saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
     choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, fixedInitiative, fixedSave, fixedSkill,

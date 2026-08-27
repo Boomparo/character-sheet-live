@@ -20,7 +20,7 @@ jobs:
             js/classes/treasure-hunter/relics-v7s.js \
             js/classes/treasure-hunter/choices-v7s.js \
             js/classes/treasure-hunter/content-v9.js \
-            js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
+            js/core/gear-rules-v9.js js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
             js/core/derived-v9.js js/core/commands-v9.js js/core/roster-v9.js \
             js/core/catalog-srd.js js/ui/portrait-cropper.js js/ui/app-v9.js service-worker.js
           do
@@ -43,8 +43,8 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v9-ux-9' service-worker.js
-          grep -q "service-worker.js?v=9.4.0" index.html
+          grep -q 'character-sheet-v9-ux-10' service-worker.js
+          grep -q "service-worker.js?v=9.5.0" index.html
           test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 8
           grep -q 'id="bioPage"' index.html
           grep -q 'id="builderBtn"' index.html

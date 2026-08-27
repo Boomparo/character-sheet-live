@@ -7,6 +7,7 @@
   const Relics = window.TreasureHunterRelicsV7s || [];
   const Origin = window.CharacterOrigin;
   const Rules = window.DND2024Rules;
+  const GearRules = window.GearRulesV9;
   if (!S || !D || !T || !Origin || !Rules) return;
 
   const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -593,10 +594,11 @@
       let remainder = startingGearStatus(state).remainingCp;
       setup.remainderCp = remainder;
       setup.finalized = true;
-      state.character.gear.money.gp += Math.floor(remainder / 100);
+      const wallet = state.character.gear.currencyWallets.generic || (state.character.gear.currencyWallets.generic = { g: 0, s: 0, c: 0 });
+      wallet.g += Math.floor(remainder / 100);
       remainder %= 100;
-      state.character.gear.money.sp += Math.floor(remainder / 10);
-      state.character.gear.money.cp += remainder % 10;
+      wallet.s += Math.floor(remainder / 10);
+      wallet.c += remainder % 10;
     }, 'starting-gear:finalize');
     return { ok: true, ...startingGearStatus() };
   }
@@ -611,22 +613,53 @@
   }
 
   function setMoney(values) {
+    const totalCp = Math.max(0, Math.floor(number(values?.pp))) * 1000 + Math.max(0, Math.floor(number(values?.gp))) * 100 +
+      Math.max(0, Math.floor(number(values?.ep))) * 50 + Math.max(0, Math.floor(number(values?.sp))) * 10 + Math.max(0, Math.floor(number(values?.cp)));
     update(state => {
-      for (const coin of ['pp', 'gp', 'ep', 'sp', 'cp']) state.character.gear.money[coin] = Math.max(0, Math.floor(number(values[coin])));
+      state.character.gear.currencyWallets.generic = D.cpCoins(totalCp);
     }, 'money:set');
   }
 
   function adjustMoney(values) {
-    const applied = {};
+    const mapped = {
+      g: Math.trunc(number(values?.gp)) + Math.trunc(number(values?.pp)) * 10,
+      s: Math.trunc(number(values?.sp)) + Math.trunc(number(values?.ep)) * 5,
+      c: Math.trunc(number(values?.cp))
+    };
+    const applied = adjustCurrency('generic', mapped);
+    return { pp: 0, gp: applied.g, ep: 0, sp: applied.s, cp: applied.c };
+  }
+
+  function adjustCurrency(currencyId, values) {
+    const id = GearRules?.CURRENCY_BY_ID?.has(currencyId) ? currencyId : 'generic';
+    const applied = { g: 0, s: 0, c: 0 };
     update(state => {
-      for (const coin of ['pp', 'gp', 'ep', 'sp', 'cp']) {
-        const before = Math.max(0, Math.floor(number(state.character.gear.money[coin])));
+      const wallets = state.character.gear.currencyWallets || (state.character.gear.currencyWallets = {});
+      const wallet = wallets[id] || (wallets[id] = { g: 0, s: 0, c: 0 });
+      for (const coin of ['g', 's', 'c']) {
+        const before = Math.max(0, Math.floor(number(wallet[coin])));
         const after = Math.max(0, before + Math.trunc(number(values?.[coin])));
-        state.character.gear.money[coin] = after;
+        wallet[coin] = after;
         applied[coin] = after - before;
       }
-    }, 'money:adjust');
+    }, 'currency:adjust');
     return applied;
+  }
+
+  function setFavoriteCurrency(currencyId) {
+    if (!GearRules?.CURRENCY_BY_ID?.has(currencyId)) return false;
+    update(state => { state.character.gear.favoriteCurrencyId = currencyId; }, 'currency:favorite');
+    return true;
+  }
+
+  function setCurrencyDisplayMode(mode) {
+    if (!['total', 'favorite'].includes(mode)) return false;
+    update(state => { state.character.gear.currencyDisplayMode = mode; }, 'currency:display');
+    return true;
+  }
+
+  function setOtherPossessions(value) {
+    update(state => { state.character.gear.otherPossessions = String(value || ''); }, 'gear:other-possessions');
   }
 
   function addCustomAction(payload) {
@@ -709,7 +742,7 @@
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
     addItem, updateItem, moveItem, setItemEquipped, removeItem, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
-    setMoney, adjustMoney, addCustomAction, removeCustomAction,
+    setMoney, adjustMoney, adjustCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveBio, setUi
   };
 })();

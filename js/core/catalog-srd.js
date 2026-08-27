@@ -1,7 +1,8 @@
 (function () {
   'use strict';
 
-  const CACHE_KEY = 'v9-srd-2024-items-v5';
+  const GearRules = window.GearRulesV9;
+  const CACHE_KEY = 'v9-srd-2024-items-v6';
   const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
   const EQUIPMENT_URL = 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2024/en/5e-SRD-Equipment.json';
   const MAGIC_URL = 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2024/en/5e-SRD-Magic-Items.json';
@@ -63,6 +64,7 @@
     };
     item.tags = deriveTags(item);
     item.isContainer = item.tags.includes('container');
+    GearRules?.applyItemWeight?.(item);
     return item;
   }
 
@@ -74,6 +76,7 @@
       image: source.image || '', cost: source.cost ? cost(source.cost.quantity, source.cost.unit) : null, source: 'SRD 5.2.1', raw: source
     };
     item.tags = deriveTags(item);
+    GearRules?.applyItemWeight?.(item);
     return item;
   }
 
@@ -94,6 +97,7 @@
       damage: damageDice, damageType, attackAbility: 'DEX', rangeLabel: `${range} ft.`, properties, mastery, masteryWeapon: original
     };
     item.tags = deriveTags(item);
+    GearRules?.applyItemWeight?.(item);
     return item;
   }
 
@@ -115,6 +119,7 @@
     const item = { id: `curated:${id}`, index: id, name, kind: 'Equipment', rarity: 'Mundane', category, source: 'SRD 5.2.1', cost: raw.cost, raw, ...extraFields };
     item.tags = deriveTags(item);
     item.isContainer = item.tags.includes('container');
+    GearRules?.applyItemWeight?.(item);
     return item;
   }
 
@@ -255,7 +260,7 @@
     if (item.rarity) push(out, 'Rarity', item.rarityLabel || item.rarity);
     if (item.category) push(out, 'Category', item.category);
     if (item.attunement) push(out, 'Attunement', 'Required');
-    if (item.weight != null || raw.weight != null) push(out, 'Weight', `${item.weight ?? raw.weight} lb.`);
+    if (item.weight != null || raw.weight != null) push(out, item.weightEstimated ? 'Weight (estimated)' : 'Weight', `${item.weightEstimated ? '~' : ''}${item.weight ?? raw.weight} lb.`);
     push(out, 'Weapon Category', raw.weapon_category);
     push(out, 'Weapon Range', raw.weapon_range);
     if (raw.damage?.damage_dice) push(out, 'Damage', `${raw.damage.damage_dice} ${raw.damage.damage_type?.name || ''}`.trim());
@@ -287,6 +292,7 @@
     copy.itemType = copy.itemType || (copy.tags?.includes('weapon') ? 'weapon' : copy.tags?.includes('armor') ? 'armor' : copy.tags?.includes('container') ? 'container' : 'item');
     copy.isContainer = copy.itemType === 'container' || !!copy.isContainer;
     copy.cost = copy.cost || copy.raw?.cost || null;
+    GearRules?.applyItemWeight?.(copy);
     return copy;
   }
 

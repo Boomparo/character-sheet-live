@@ -8,7 +8,7 @@
     'ancient-languages': 'Starodávné jazyky',
     'specialized-expertise': 'Odborná expertíza',
     'conversational-tourist': 'Komunikativní turista',
-    'cool-die': 'Cool Die',
+    'cool-die': 'Cool die',
     'weapon-mastery': 'Weapon Mastery',
     'indy-get-up': 'Indyho zvedačka',
     'cool-points': 'Treasure hunterův cool',

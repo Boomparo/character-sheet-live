@@ -11,6 +11,7 @@
   const Roster = window.CharacterRoster;
   const Catalog = window.V7SItemCatalog;
   const Cropper = window.V7SPortraitCropper;
+  const GearRules = window.GearRulesV9;
   if (!S || !D || !C || !T || !Rules || !Origin) return;
 
   const PAGE_DEFINITIONS = [
@@ -58,7 +59,7 @@
   const local = {
     featureSearch: '', catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
     catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '',
-    pendingNpcRelations: [], activeNpcId: '', activeItemId: '', restMode: 'short', restHitDice: 0,
+    pendingNpcRelations: [], activeNpcId: '', activeItemId: '', activeCurrencyId: 'generic', restMode: 'short', restHitDice: 0,
     builderTab: 'setup', catalogItems: [], scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: ''
   };
 
@@ -75,8 +76,54 @@
     const weight = Math.round((Number(value) || 0) * 100) / 100;
     return `${Number.isInteger(weight) ? weight : weight.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')} lb.`;
   };
+  const weightNumber = value => {
+    const weight = Math.round((Number(value) || 0) * 100) / 100;
+    return Number.isInteger(weight) ? String(weight) : weight.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  };
   const actionCode = value => ({ Action: 'A', 'Bonus Action': 'BA', Reaction: 'R', Free: 'FREE', Other: 'OTHER', Resource: 'RESOURCE', Passive: 'PASSIVE' }[value] || String(value || 'OTHER').toUpperCase());
   const actionFilterKey = value => value === 'Action' ? 'action' : value === 'Bonus Action' ? 'bonus' : value === 'Reaction' ? 'reaction' : 'other';
+
+  function coolDice(count = 1, source = state()) {
+    const die = String(T.coolDie(D.level(source)) || 'd6').match(/d\d+/i)?.[0]?.toLowerCase() || 'd6';
+    return `${Math.max(1, Number(count) || 1)}${die}`;
+  }
+
+  function normalizedCoolText(value) {
+    return String(value || '')
+      .replace(/Kostkou coolu/gi, 'Cool die')
+      .replace(/Kostkami coolu/gi, 'Cool die')
+      .replace(/Kostky coolu/gi, 'Cool die')
+      .replace(/Kostka coolu/gi, 'Cool die')
+      .replace(/Cool Die/g, 'Cool die');
+  }
+
+  function rulesText(value, source = state()) {
+    let text = normalizedCoolText(value);
+    const quantities = [
+      [5, /(pěti\s+hodům|pět\s+hodů)\s+Cool die(?!\s*\()/gi],
+      [4, /(čtyřem\s+hodům|čtyři\s+hody)\s+Cool die(?!\s*\()/gi],
+      [3, /(třem\s+hodům|tři\s+hody)\s+Cool die(?!\s*\()/gi],
+      [2, /(dvěma\s+hodům|dvěma\s+hody|dva\s+hody)\s+Cool die(?!\s*\()/gi]
+    ];
+    for (const [count, pattern] of quantities) text = text.replace(pattern, match => `${match} (${coolDice(count, source)})`);
+    return nl(text.replace(/Cool die(?!\s*\()/g, `Cool die (${coolDice(1, source)})`));
+  }
+
+  function featureDamageBadge(id, source = state()) {
+    if (id === 'attack-slide') return `PRECISION +${coolDice(1, source)} DMG`;
+    if (id === 'precision-slide') return `+${coolDice(1, source)} DMG`;
+    if (['daring-strike', 'improved-daring', 'superior-daring'].includes(id)) {
+      const count = D.level(source) >= 17 ? 3 : D.level(source) >= 13 ? 2 : 1;
+      return `+${coolDice(count, source)} DMG`;
+    }
+    return '';
+  }
+
+  function compactDamage(value) {
+    const rendered = String(value || '').trim();
+    const match = rendered.match(/^([0-9]+d[0-9]+(?:\s*[+−-]\s*[0-9]+)?|[0-9]+(?:\s*[+−-]\s*[0-9]+)?)/i);
+    return (match?.[1] || rendered).replace(/\s+/g, '');
+  }
 
   function pageIntro(label, description) { return `<div class="page-intro"><span>${esc(label)}</span><small>${esc(description)}</small></div>`; }
   function section(title, body, aside = '') { return `<section class="section"><div class="section-head"><h2>${esc(title)}</h2>${aside}</div>${body}</section>`; }
@@ -160,9 +207,9 @@
         <button type="button" class="vital-card vital-ac" data-stat-detail="ac"><span class="vital-label">ARMOR CLASS</span><strong>${D.armorClass(source)}</strong><small>${esc(armor.label)} · View formula & edit</small></button>
       </div><div class="stat-grid combat-secondary">
         <button type="button" class="stat" data-stat-detail="initiative"><span>INIT</span><span class="stat-value-row"><b>${S.signed(D.initiative(source))}</b>${rollIndicator(initMode)}</span></button>
-        ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('LOAD', `${weightLabel(load.weight)} / ${weightLabel(load.limit)}`, 'encumbrance', 'compact')}${statDetail('PUSH / DRAG', weightLabel(load.pushDragLift), 'encumbrance', 'compact')}${hasRelics ? statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact') : ''}${stat('PB', S.signed(D.pb(source)), 'compact')}
+        ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('LOAD', `${weightNumber(load.weight)}/${weightNumber(load.limit)} lb`, 'encumbrance', `compact load-stat ${load.status !== 'normal' ? 'load-alert' : ''}`)}${statDetail('PUSH / DRAG', `${weightNumber(load.pushDragLift)} lb`, 'encumbrance', `compact load-stat ${load.status === 'over' ? 'load-alert' : ''}`)}${hasRelics ? statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact') : ''}${stat('PB', S.signed(D.pb(source)), 'compact')}
       </div>${senses.length ? `<div class="character-senses"><b>SENSES</b>${senses.map(sense => `<span class="chip">${esc(sense)}</span>`).join('')}</div>` : ''}<div class="hero-actions rest-actions"><button class="small-btn" type="button" data-rest="short">Short Rest</button><button class="small-btn" type="button" data-rest="long">Long Rest</button><button class="small-btn ${c.inspiration ? 'primary' : ''}" type="button" data-inspiration>Inspiration</button></div>`)}
-      ${section('Cool Points', `<div class="resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><small class="muted">Cool Die ${T.coolDie(D.level(source))}</small></div><b>${coolLeft}/${coolTotal}</b></div>`)}
+      ${section('Cool Points', `<div class="resource-row cool-resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><b>${coolLeft}/${coolTotal}</b></div>`)}
       ${luck}
       ${section('Abilities & Saves', `<div class="ability-grid">${abilityCards}</div><small class="muted top-gap">A/D is shown only when active. A forced state is locked to its condition or relic.</small>`)}
       ${section('Conditions', `<div class="condition-strip">${conditionChips || '<span class="muted">No active conditions.</span>'}${c.exhaustion ? `<span class="chip brass">Exhaustion ${c.exhaustion}</span>` : ''}</div><div class="inline-form top-gap"><select id="conditionSelect"><option value="">Add condition…</option>${conditionOptions}</select><button type="button" class="small-btn" data-condition-add>+</button></div><div class="tiny-controls top-gap"><button type="button" data-exhaustion-adjust="-1">Exhaustion −</button><button type="button" data-exhaustion-adjust="1">Exhaustion +</button></div>`)}
@@ -195,7 +242,7 @@
     D.weaponAttacks(source).forEach(weapon => records.push({
       id: `weapon:${weapon.id}`, name: weapon.name, action: 'Action', source: 'Weapon', group: 'weapons',
       summary: [weapon.rangeText ? `Range: ${weapon.rangeText}` : '', weapon.propertiesText ? `Properties: ${weapon.propertiesText}` : '', weapon.description || ''].filter(Boolean).join('\n'),
-      hit: S.signed(weapon.hit), damage: weapon.damage, mastery: weapon.mastery,
+      hit: S.signed(weapon.hit), damage: weapon.damage, headerDamage: weapon.headerDamage, damageType: weapon.damageType, mastery: weapon.mastery,
       masteryDescription: weapon.masteryDescription, masterySources: weapon.masterySources,
       effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], ability: weapon.ability, isAttack: true
     }));
@@ -216,7 +263,7 @@
     T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && D.featureMatchesSubclass(feature, source)).forEach(feature => records.push({
       id: feature.id, name: feature.name, action: feature.action, source: `Treasure Hunter ${feature.level}`, group: 'treasure',
       summary: feature.fullText || feature.summary, cost: Number(feature.cost) || 0, parentId: feature.parentId || FEATURE_PARENT[feature.id] || '',
-      featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id)
+      featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id), damageBonus: featureDamageBadge(feature.id, source)
     }));
     records.push(...D.originActions(source));
     records.push(...coreActions());
@@ -245,11 +292,12 @@
     const mastery = record.mastery ? `<div class="mastery-callout"><b>ON HIT · ${esc(record.mastery)} mastery</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.join(' · '))}</small>` : ''}</div>` : '';
     const effects = (record.effects || []).map(effect => `<div class="action-effect"><b>${esc(effect.name)}</b><span>${nl(effect.summary || '')}</span><small>${esc(effect.source || '')}</small></div>`).join('');
     const breakdown = record.attackBreakdown?.length ? `<details class="attack-breakdown"><summary>Attack calculation</summary><div class="formula-list">${record.attackBreakdown.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></details>` : '';
+    const fullDamage = record.damage ? `<div class="action-damage-detail"><b>DAMAGE</b><span>${esc(record.damage)}</span></div>` : '';
     const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(record.name)}"><b>${record.cost}</b><span>COOL</span></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}">
-      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><strong>${esc(record.name)}</strong><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">ON HIT · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.damage)}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
-      <div class="row-detail">${mastery}${effects}${record.summary ? `<div class="action-summary">${nl(record.summary)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
+      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">ON HIT · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
+      <div class="row-detail">${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
 
@@ -298,7 +346,7 @@
       if (!groupRecords.length && (key !== 'custom' || selectedFilter !== 'all')) continue;
       body += `<section class="action-group"><h3>${esc(label)}</h3><div class="list">${groupRecords.length ? renderActionTree(groupRecords) : '<div class="empty">No custom actions yet.</div>'}</div>${key === 'custom' ? '<button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button>' : ''}</section>`;
     }
-    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><i>Cool Die ${T.coolDie(D.level(source))}</i></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
+    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
   }
 
   function renderSkills() {
@@ -359,9 +407,11 @@
     const used = Number(source.classes.treasureHunter.featureUses?.[feature.id]) || 0;
     const choiceMissing = feature.level <= D.level(source) && featureChoiceIncomplete(feature, source);
     const subclassFeature = D.featureSubclassDefinition(feature);
+    const damageBonus = featureDamageBadge(feature.id, source);
+    const slideUpgrade = ['attack-slide', 'precision-slide', 'line-attack'].includes(feature.id);
     return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}">
-      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><strong>${esc(feature.name)}</strong><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span>${feature.cost} Cool</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
-      <div class="row-detail">${nl(feature.fullText || feature.summary)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
+      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><span class="action-title-line"><strong>${esc(feature.name)}</strong>${damageBonus ? `<b class="damage-bonus-chip">${esc(damageBonus)}</b>` : ''}</span><span class="row-meta"><span>Level ${feature.level}</span>${slideUpgrade ? '<span class="upgrade-inline">INDYHO SKLUZ UPGRADE</span>' : ''}${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span>${feature.cost} Cool</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
+      <div class="row-detail">${rulesText(feature.fullText || feature.summary, source)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
     </article>`;
   }
 
@@ -494,6 +544,8 @@
     const active = D.isItemActive(item);
     const effectiveLocation = effectiveItemLocation(item, context);
     const stackWeight = D.itemStackWeight(item);
+    const keyStats = D.itemKeyStats(item);
+    const locationText = parent ? `In ${parent.name} · ${LOCATION_LABELS[effectiveLocation] || effectiveLocation}` : LOCATION_LABELS[effectiveLocation] || effectiveLocation;
     const fields = Catalog ? Catalog.displayFields(item).map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('') : '';
     const mechanicRows = [
       [item.damage ? 'Damage' : '', [item.damage, item.damageType].filter(Boolean).join(' ')],
@@ -510,19 +562,33 @@
     ].filter(([label, value]) => label && value).map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('');
     const status = active ? '<span class="item-active">ACTIVE</span>' : equipped && item.attunement ? '<span class="item-warning">ATTUNEMENT NEEDED</span>' : equipped ? '<span class="item-active">EQUIPPED</span>' : '';
     const activationNote = equipped && item.attunement && !item.isAttuned ? '<div class="item-activation-warning">Equipped, but its stats and actions stay inactive until attuned.</div>' : '';
+    const weightNote = item.weightEstimated && item.weightNote ? `<div class="item-estimate-note"><b>Estimated weight</b><span>${esc(item.weightNote)} Edit it if this version of the item differs.</span></div>` : '';
     const equipButton = !item.isContainer ? `<button type="button" class="small-btn item-equip ${equipped ? 'primary' : ''}" data-item-equip="${esc(item.id)}">${equipped ? 'Unequip' : 'Equip'}</button>` : '';
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
     return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}">
-      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><strong>${esc(item.name)}</strong><span class="row-meta"><span>${parent ? `In ${esc(parent.name)}` : esc(LOCATION_LABELS[effectiveLocation] || effectiveLocation)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight">${stackWeight == null ? 'WEIGHT ?' : esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
-      <div class="inventory-detail">${activationNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label><label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label><label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
+      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
+      <div class="inventory-detail">${activationNote}${weightNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label><label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label><label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
+  }
+
+  function moneyCoin(key, amount, denomination = '') {
+    const definition = { g: ['G', 'gold'], s: ['S', 'silver'], c: ['C', 'copper'] }[key];
+    return `<span class="money-total ${definition[1]}" title="${esc(denomination)}"><i>${definition[0]}</i><b>${Math.max(0, Math.floor(Number(amount) || 0))}</b></span>`;
+  }
+
+  function equipmentGroup(item) {
+    if (D.isWeapon(item)) return 'weapons';
+    if (D.isArmor(item) || D.isShield(item)) return 'armor';
+    if (item.kind === 'Magic Item' || (item.rarity && item.rarity !== 'Mundane')) return 'magic';
+    return 'other';
   }
 
   function renderGear() {
     const source = state();
     const load = D.encumbrance(source);
-    const money = source.character.gear.money || {};
-    const wallet = [['pp', 'PP', 'P'], ['gp', 'GP', 'G'], ['ep', 'EP', 'E'], ['sp', 'SP', 'S'], ['cp', 'CP', 'C']].map(([key, label, short]) => `<span title="${label}"><b>${Number(money[key]) || 0}</b><i>${short}</i></span>`).join('');
+    const money = D.currencySummary(source);
+    const displayCurrency = money.mode === 'favorite' ? money.favorite : GearRules.currency('generic');
+    const wallet = ['g', 's', 'c'].map(key => moneyCoin(key, money.amounts[key], displayCurrency.denominations[key])).join('');
     const context = gearContext(source);
     context.children = new Map();
     context.records.forEach(record => {
@@ -532,15 +598,25 @@
     });
     for (const records of context.children.values()) records.sort((a, b) => String(a.item.name).localeCompare(String(b.item.name)));
     const roots = context.children.get('') || [];
-    const locationGroups = Object.entries(LOCATION_LABELS).map(([key, label]) => {
+    const equipped = roots.filter(record => ['equipped', 'worn'].includes(effectiveItemLocation(record.item, context)));
+    const equippedGroups = [
+      ['weapons', 'Weapons'], ['armor', 'Armor'], ['magic', 'Magic Items'], ['other', 'Other Equipped']
+    ].map(([key, label]) => {
+      const records = equipped.filter(record => equipmentGroup(record.item) === key);
+      return records.length ? `<div class="gear-subgroup"><h4>${label}</h4><div class="gear-grid">${records.map(record => renderGearItem(record, context)).join('')}</div></div>` : '';
+    }).join('');
+    const equippedSection = equipped.length ? `<section class="gear-location equipped-location"><h3>Equipped</h3>${equippedGroups}</section>` : '';
+    const locationGroups = [['carried', 'Carried'], ['back', 'On back'], ['ground', 'On ground'], ['storage', 'Storage']].map(([key, label]) => {
       const records = roots.filter(record => effectiveItemLocation(record.item, context) === key);
       return records.length ? `<section class="gear-location"><h3>${esc(label)}</h3><div class="gear-grid">${records.map(record => renderGearItem(record, context)).join('')}</div></section>` : '';
     }).join('');
-    const itemCards = locationGroups || '<div class="empty">Inventory is empty.</div>';
+    const itemCards = equippedSection || locationGroups ? `${equippedSection}${locationGroups}` : '<div class="empty">Inventory is empty.</div>';
+    const modeLabel = load.mode === 'variant' ? 'Variant ×5' : load.mode === 'balanced' ? 'Expedition ×10' : 'Basic ×15';
+    const moneyCaption = money.mode === 'favorite' ? `Favorite balance · ${money.favorite.name}` : 'Total value across all owned currencies';
     $('#gearPage').innerHTML = `${pageIntro('GEAR', 'Equipment, locations, containers and money')}
-      ${section('Load & Encumbrance', `<div class="encumbrance-panel ${esc(load.status)}"><label>Rule mode<select id="encumbranceMode"><option value="basic" ${load.mode === 'basic' ? 'selected' : ''}>Basic · STR ×15</option><option value="balanced" ${load.mode === 'balanced' ? 'selected' : ''}>Expedition · STR ×10</option><option value="variant" ${load.mode === 'variant' ? 'selected' : ''}>Variant · STR ×5 / ×10 / ×15</option></select></label><div class="stat-grid encumbrance-stats">${stat('CARRIED', weightLabel(load.weight), 'compact')}${stat('CAPACITY', weightLabel(load.limit), 'compact')}${stat('PUSH / DRAG / LIFT', weightLabel(load.pushDragLift), 'compact wide')}${stat('STATUS', load.statusLabel, 'compact wide')}</div><p class="encumbrance-rule">${load.mode === 'variant' ? `Over ${weightLabel(load.lightLimit)}: Speed −10 ft. · Over ${weightLabel(load.heavyLimit)}: Speed −20 ft. and Disadvantage on STR, DEX and CON attacks, checks and saves · Maximum ${weightLabel(load.standardLimit)}.` : load.mode === 'balanced' ? `Expedition mode uses the requested middle limit of STR ×10. Push, Drag and Lift stay at STR ×30.` : `Basic mode uses carrying capacity STR ×15. Push, Drag and Lift use STR ×30.`}</p>${load.unknownWeights ? `<div class="load-warning">${load.unknownWeights} item${load.unknownWeights === 1 ? '' : 's'} still ${load.unknownWeights === 1 ? 'has' : 'have'} no weight and ${load.unknownWeights === 1 ? 'is' : 'are'} not included.</div>` : ''}</div>`)}
-      ${section('Money', `<button type="button" class="money-wallet" data-money-open>${wallet}<small>Tap to edit</small></button>`)}
-      ${section('Inventory', `<div class="detail-actions"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
+      <button type="button" class="load-strip ${load.status !== 'normal' ? 'load-alert' : ''}" data-stat-detail="encumbrance"><span><small>LOAD · ${esc(modeLabel)}</small><b>${weightNumber(load.weight)}/${weightNumber(load.limit)} lb</b></span><em>${esc(load.statusLabel)}</em><i>›</i></button>
+      ${section('Money', `<button type="button" class="money-wallet" data-money-open><span class="money-wallet-label"><small>${esc(moneyCaption)}</small><b>${money.mode === 'favorite' ? esc(money.favorite.region) : `★ ${esc(money.favorite.name)}`}</b></span><span class="money-coins">${wallet}</span><i class="money-open-hint">Manage ›</i></button>`)}
+      ${section('Inventory', `<div class="detail-actions"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><label class="other-possessions"><span>OTHER POSSESSIONS</span><textarea id="otherPossessions" rows="4" placeholder="Property, documents, vehicles, safe-deposit contents…">${esc(source.character.gear.otherPossessions || '')}</textarea><small>Text-only possessions do not add carried weight.</small></label><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
     `;
   }
 
@@ -648,7 +724,7 @@
     document.body.insertAdjacentHTML('beforeend', `
       <dialog id="builderDialog" class="sheet-dialog builder-dialog"><form method="dialog" id="builderForm"><div class="dialog-head"><strong>Character Builder</strong><button value="cancel" class="icon-btn">×</button></div><div class="builder-tabs"><button type="button" data-builder-tab="setup">SETUP & CHOICES</button><button type="button" data-builder-tab="data">JSON DATA</button></div><div id="builderBody"></div><menu><button value="cancel" class="ghost">Close</button><button id="builderSave" type="submit" class="primary">Save Setup</button></menu></form></dialog>
       <dialog id="bioDialog" class="sheet-dialog"><form method="dialog" id="bioForm"><div class="dialog-head"><strong>Character Bio</strong><button value="cancel" class="icon-btn">×</button></div><div id="bioFields"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Bio</button></menu></form></dialog>
-      <dialog id="moneyDialog" class="sheet-dialog money-dialog"><form method="dialog" id="moneyForm"><div class="dialog-head"><strong>Add / Remove Money</strong><button value="cancel" class="icon-btn">×</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove. Coins never drop below zero.</p><div class="money-edit-grid">${[['Pp', 'PP'], ['Gp', 'GP'], ['Ep', 'EP'], ['Sp', 'SP'], ['Cp', 'CP']].map(([id, label]) => `<label><span>${label} <b id="money${id}Current">0</b></span><input id="money${id}Delta" type="number" inputmode="numeric" value="0" placeholder="+ / −"></label>`).join('')}</div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Apply change</button></menu></form></dialog>
+      <dialog id="moneyDialog" class="sheet-dialog money-dialog"></dialog>
       <dialog id="restDialog" class="sheet-dialog rest-dialog"><form method="dialog" id="restForm"><div class="dialog-head"><strong id="restTitle">Rest</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="restBody"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary" id="finishRest">Finish Rest</button></menu></form></dialog>
       <dialog id="itemEditDialog" class="sheet-dialog item-edit-dialog"><form method="dialog" id="itemEditForm"><div class="dialog-head"><strong id="itemEditTitle">Item</strong><button value="cancel" class="icon-btn">×</button></div><input id="itemEditId" type="hidden"><label>Item name<input id="itemEditName" required></label><div class="form-grid two"><label>Type<select id="itemEditType"><option value="item">Item</option><option value="weapon">Weapon</option><option value="armor">Armor</option><option value="shield">Shield</option><option value="container">Container</option></select></label><label>Quantity<input id="itemEditQuantity" type="number" min="1" value="1"></label><label>Price<input id="itemEditPrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label><label>Currency<select id="itemEditCurrency"><option value="gp">GP</option><option value="sp">SP</option><option value="cp">CP</option><option value="ep">EP</option><option value="pp">PP</option></select></label><label>Location<select id="itemEditLocation">${itemLocationOptions('carried')}</select></label><label>Stored in<select id="itemEditStoredIn"><option value="">No container</option></select></label></div><div class="item-toggle-grid"><label class="check-label"><input id="itemEditEquipped" type="checkbox"> Equipped / worn</label><label class="check-label"><input id="itemEditContainer" type="checkbox"> Use as container</label><label class="check-label"><input id="itemEditAttunement" type="checkbox"> Requires attunement</label><label class="check-label"><input id="itemEditAttuned" type="checkbox"> Attuned</label></div><details class="item-mechanics"><summary>Stats, defenses & action</summary><div class="form-grid two"><label>Damage dice<input id="itemEditDamage" placeholder="1d6"></label><label>Damage type<input id="itemEditDamageType" placeholder="Slashing"></label><label>Attack ability<select id="itemEditAttackAbility"><option value="">Automatic</option>${S.A.map(ability => `<option value="${ability}">${ability}</option>`).join('')}</select></label><label>Mastery<input id="itemEditMastery"></label><label>Armor base<input id="itemEditArmorBase" type="number" min="0" placeholder="e.g. 12"></label><label>Armor DEX<select id="itemEditArmorDex"><option value="full">Full DEX</option><option value="capped">DEX capped</option><option value="none">No DEX</option></select></label><label>DEX cap<input id="itemEditArmorDexCap" type="number" min="0" value="2"></label><label>AC bonus<input id="itemEditAcBonus" type="number" value="0"></label><label>Speed bonus<input id="itemEditSpeedBonus" type="number" value="0"></label><label>Initiative bonus<input id="itemEditInitiativeBonus" type="number" value="0"></label><label>Attack bonus<input id="itemEditAttackBonus" type="number" value="0"></label><label>Damage bonus<input id="itemEditDamageBonus" type="number" value="0"></label><label>Resistance<input id="itemEditResistance" placeholder="Fire, Cold"></label><label>Immunity<input id="itemEditImmunity" placeholder="Poison"></label><label>Vulnerability<input id="itemEditVulnerability" placeholder="Radiant"></label><label>Condition immunity<input id="itemEditConditionImmunity" placeholder="Charmed"></label><label>Action name<input id="itemEditActionName" placeholder="Optional"></label><label>Action type<select id="itemEditActionType"><option value="">No action</option><option>Action</option><option>Bonus Action</option><option>Reaction</option><option>Free</option><option>Other</option></select></label><label>Action damage<input id="itemEditActionDamage" placeholder="Optional"></label><label class="check-label"><input id="itemEditActionAttack" type="checkbox"> Attack action</label></div><label>Action rules<textarea id="itemEditActionSummary" rows="3"></textarea></label></details><label>Notes<textarea id="itemEditNotes" rows="5"></textarea></label><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Item</button></menu></form></dialog>
       <dialog id="statDialog" class="sheet-dialog"><form method="dialog"><div class="dialog-head"><strong id="statTitle">Stat</strong><button value="cancel" class="icon-btn">×</button></div><div id="statBody"></div></form></dialog>
@@ -890,7 +966,7 @@
     } else if (kind === 'encumbrance') {
       const load = D.encumbrance(source);
       title = `Load · ${load.statusLabel}`;
-      body = `<div class="formula-list"><div class="formula-row"><span>Carried weight</span><b>${esc(weightLabel(load.weight))}</b></div><div class="formula-row"><span>${esc(load.modeLabel)}</span><b>${esc(weightLabel(load.limit))}</b></div><div class="formula-row"><span>Push, Drag or Lift</span><b>${esc(weightLabel(load.pushDragLift))}</b></div><div class="formula-row"><span>Size multiplier</span><b>×${esc(load.sizeMultiplier)}</b></div>${load.speedPenalty ? `<div class="formula-row"><span>Speed penalty</span><b>−${load.speedPenalty} ft.</b></div>` : ''}</div><div class="stat-editor-note"><b>${esc(load.statusLabel)}</b><span>${load.unknownWeights ? `${load.unknownWeights} item weights are unknown. ` : ''}Containers count with their contents; items on the ground or in storage do not.</span></div><div class="detail-actions"><button type="button" class="small-btn primary" data-jump-page="gearPage">Manage load in Gear</button></div>`;
+      body = `<label class="encumbrance-mode-editor">Encumbrance rule<select id="statEncumbranceMode"><option value="basic" ${load.mode === 'basic' ? 'selected' : ''}>Basic · STR ×15</option><option value="balanced" ${load.mode === 'balanced' ? 'selected' : ''}>Expedition · STR ×10</option><option value="variant" ${load.mode === 'variant' ? 'selected' : ''}>Variant · STR ×5</option></select></label><div class="formula-list load-formula ${load.status !== 'normal' ? 'load-alert' : ''}"><div class="formula-row"><span>Carried weight</span><b>${esc(weightLabel(load.weight))}</b></div><div class="formula-row"><span>Current limit (${esc(load.modeLabel)})</span><b>${esc(weightLabel(load.limit))}</b></div>${load.mode === 'variant' ? `<div class="formula-row"><span>Heavily encumbered · STR ×10</span><b>${esc(weightLabel(load.heavyLimit))}</b></div><div class="formula-row"><span>Maximum · STR ×15</span><b>${esc(weightLabel(load.standardLimit))}</b></div>` : ''}<div class="formula-row"><span>Push, Drag or Lift · STR ×30</span><b>${esc(weightLabel(load.pushDragLift))}</b></div><div class="formula-row"><span>Size multiplier</span><b>×${esc(load.sizeMultiplier)}</b></div>${load.speedPenalty ? `<div class="formula-row"><span>Speed penalty</span><b>−${load.speedPenalty} ft.</b></div>` : ''}</div><div class="stat-editor-note"><b>${esc(load.statusLabel)}</b><span>${load.mode === 'variant' ? `Over ${weightLabel(load.lightLimit)} reduces Speed by 10 ft. Over ${weightLabel(load.heavyLimit)} reduces Speed by 20 ft. and gives Disadvantage on relevant STR, DEX and CON attacks, checks and saves. ` : ''}A Backpack and everything inside it are carried whenever the Backpack is carried or worn on the back. Storage and ground items are excluded.</span></div><div class="detail-actions"><button type="button" class="small-btn primary" data-jump-page="gearPage">Manage carried items</button></div>`;
     } else if (kind === 'whipDc' || kind === 'relicDc') {
       const relic = kind === 'relicDc';
       const breakdown = D.dcBreakdown(relic ? 'relic' : 'whipRope', source);
@@ -919,12 +995,20 @@
     showDialog('#statDialog');
   }
 
+  function renderMoneyDialog() {
+    const summary = D.currencySummary(state());
+    if (!GearRules.CURRENCY_BY_ID.has(local.activeCurrencyId)) local.activeCurrencyId = summary.favoriteId;
+    const active = GearRules.currency(local.activeCurrencyId);
+    const wallet = summary.wallets[active.id] || { g: 0, s: 0, c: 0 };
+    const currencyOptions = GearRules.WORLD_CURRENCIES.map(currency => `<option value="${currency.id}" ${currency.id === active.id ? 'selected' : ''}>${esc(currency.region)} · ${esc(currency.name)}</option>`).join('');
+    const ownedRows = summary.owned.sort((a, b) => Number(b.id === summary.favoriteId) - Number(a.id === summary.favoriteId) || a.region.localeCompare(b.region)).map(currency => `<button type="button" class="currency-account ${currency.id === active.id ? 'active' : ''}" data-currency-select="${currency.id}"><span><b>${currency.id === summary.favoriteId ? '★ ' : ''}${esc(currency.name)}</b><small>${esc(currency.region)}</small></span><em>${currency.wallet.g} G · ${currency.wallet.s} S · ${currency.wallet.c} C</em></button>`).join('');
+    const total = D.cpCoins(summary.totalCp);
+    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove. Each national currency remains separate; the top total is converted automatically.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="0" placeholder="+ / −"></label>`).join('')}</div><menu><button value="cancel" class="ghost">Close</button><button type="submit" class="primary">Apply change</button></menu></form>`;
+  }
+
   function openMoney() {
-    const money = state().character.gear.money;
-    for (const [id, key] of [['Pp', 'pp'], ['Gp', 'gp'], ['Ep', 'ep'], ['Sp', 'sp'], ['Cp', 'cp']]) {
-      $(`#money${id}Current`).textContent = Number(money[key]) || 0;
-      $(`#money${id}Delta`).value = 0;
-    }
+    local.activeCurrencyId = D.currencySummary(state()).favoriteId;
+    renderMoneyDialog();
     showDialog('#moneyDialog');
   }
   function findGearItem(id) { return allGearItems().find(record => record.item.id === id)?.item || null; }
@@ -1382,6 +1466,9 @@
     if (button.dataset.relicRemove) { if (confirm('Remove this relic from the collection?')) C.removeRelic(button.dataset.relicRemove); return; }
 
     if (button.hasAttribute('data-money-open')) { openMoney(); return; }
+    if (button.dataset.currencySelect != null) { local.activeCurrencyId = button.dataset.currencySelect; renderMoneyDialog(); return; }
+    if (button.dataset.currencyFavorite != null) { C.setFavoriteCurrency(button.dataset.currencyFavorite); local.activeCurrencyId = button.dataset.currencyFavorite; renderMoneyDialog(); toast(`${GearRules.currency(button.dataset.currencyFavorite).name} set as favorite.`); return; }
+    if (button.dataset.currencyDisplay != null) { C.setCurrencyDisplayMode(button.dataset.currencyDisplay); renderMoneyDialog(); return; }
     if (button.hasAttribute('data-open-catalog')) { openCatalog(); return; }
     if (button.hasAttribute('data-starting-budget-save')) {
       const result = C.setStartingGearBudget($('#builderStartingGold').value);
@@ -1506,7 +1593,9 @@
 
   function onChange(event) {
     const target = event.target;
-    if (target.id === 'encumbranceMode') { C.setEncumbranceMode(target.value); return; }
+    if (target.id === 'encumbranceMode' || target.id === 'statEncumbranceMode') { C.setEncumbranceMode(target.value); if (target.id === 'statEncumbranceMode') openStatDetail('encumbrance'); return; }
+    if (target.id === 'moneyCurrencySelect') { local.activeCurrencyId = target.value; renderMoneyDialog(); return; }
+    if (target.id === 'otherPossessions') { C.setOtherPossessions(target.value); toast('Other possessions saved.'); return; }
     if (target.id === 'defenseKind') {
       $('#defenseValue').innerHTML = target.value === 'conditionImmunity' ? $('#conditionDefenseOptions').innerHTML : $('#damageDefenseOptions').innerHTML;
       return;
@@ -1606,9 +1695,10 @@
       closeDialog('#bioDialog'); toast('Bio saved.'); return;
     }
     if (form.id === 'moneyForm') {
-      const applied = C.adjustMoney({ pp: $('#moneyPpDelta').value, gp: $('#moneyGpDelta').value, ep: $('#moneyEpDelta').value, sp: $('#moneySpDelta').value, cp: $('#moneyCpDelta').value });
+      const applied = C.adjustCurrency(local.activeCurrencyId, { g: $('#moneyGDelta').value, s: $('#moneySDelta').value, c: $('#moneyCDelta').value });
       const summary = Object.entries(applied).filter(([, amount]) => amount).map(([coin, amount]) => `${amount > 0 ? '+' : ''}${amount} ${coin.toUpperCase()}`).join(' • ');
-      closeDialog('#moneyDialog'); toast(summary || 'No money changed.'); return;
+      renderMoneyDialog();
+      toast(summary || 'No money changed.'); return;
     }
     if (form.id === 'restForm') {
       const long = local.restMode === 'long';
@@ -1630,6 +1720,7 @@
       const values = {
         name: $('#itemEditName').value, itemType: type, quantity: $('#itemEditQuantity').value,
         weight: $('#itemEditWeight').value === '' ? null : Math.max(0, Number($('#itemEditWeight').value) || 0),
+        weightEstimated: $('#itemEditWeight').value === '', weightNote: $('#itemEditWeight').value === '' ? '' : null,
         cost: $('#itemEditPrice').value === '' ? null : { quantity: Math.max(0, Number($('#itemEditPrice').value) || 0), unit: $('#itemEditCurrency').value },
         isContainer: type === 'container' || $('#itemEditContainer').checked,
         attunement: $('#itemEditAttunement').checked, isAttuned: $('#itemEditAttunement').checked && $('#itemEditAttuned').checked,

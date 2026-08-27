@@ -34,6 +34,7 @@ for (const file of [
   'js/classes/treasure-hunter/data-v7s.js',
   'js/classes/treasure-hunter/relics-v7s.js',
   'js/classes/treasure-hunter/choices-v7s.js',
+  'js/core/gear-rules-v9.js',
   'js/classes/treasure-hunter/content-v9.js',
   'js/core/state-v9.js', 'js/core/rules-2024.js', 'js/core/origin-v9.js',
   'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/core/catalog-srd.js'
@@ -45,8 +46,9 @@ const C = global.CharacterCommands;
 const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
+const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.4.0-subclass-encumbrance');
+assert.equal(S.APP_VERSION, '9.5.0-inventory-currencies');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -59,7 +61,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 14);
+  assert.equal(state.schemaVersion, 15);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -81,6 +83,9 @@ test('legacy V7 data migrates once without deleting the legacy key', () => {
   assert.equal(backpack.isContainer, true, 'legacy pseudo-Backpack becomes a real container item');
   assert.equal(torch.containerId, backpack.id);
   assert.equal(torch.location, backpack.location);
+  assert.equal(torch.weight, 1, 'known legacy items receive their canonical SRD weight');
+  assert.equal(torch.weightEstimated, true);
+  assert.deepEqual(state.character.gear.currencyWallets.generic, { g: 7, s: 0, c: 0 }, 'legacy D&D coins migrate into the generic wallet');
   assert.equal(state.character.gear.starting.legacy, true);
   assert.ok(memory.has('character-sheet-v7s'));
   assert.ok(memory.has('character-sheet-v9'));
@@ -275,6 +280,7 @@ test('Builder uses a priced starting shop instead of materializing a fixed class
   assert.equal(finalized.remainderCp, 1800);
   assert.equal(C.startingGearStatus().remainingCp, 0);
   assert.equal(S.get().character.gear.money.gp, 18);
+  assert.deepEqual(S.get().character.gear.currencyWallets.generic, { g: 18, s: 0, c: 0 });
   assert.equal(C.refundStartingItem(bagPurchase.id).reason, 'finalized');
 });
 
@@ -390,8 +396,9 @@ test('weight, three encumbrance modes and Push Drag Lift use one canonical calcu
       { id: 'mystery', name: 'Unknown Relic', location: 'carried', quantity: 1 }
     );
   });
-  assert.equal(D.carriedWeight().total, 60, 'container and contents both count, storage does not');
-  assert.equal(D.carriedWeight().unknown, 1);
+  assert.equal(D.carriedWeight().total, 61, 'container, contents and an inferred item all count; storage does not');
+  assert.equal(D.carriedWeight().unknown, 0, 'missing weights are normalized to transparent estimates');
+  assert.equal(D.inventory().find(item => item.id === 'mystery').weightEstimated, true);
   assert.equal(D.encumbrance().limit, 150);
   assert.equal(D.encumbrance().pushDragLift, 300);
 
@@ -400,6 +407,7 @@ test('weight, three encumbrance modes and Push Drag Lift use one canonical calcu
   assert.equal(D.encumbrance().status, 'normal');
 
   C.setEncumbranceMode('variant');
+  assert.equal(D.encumbrance().limit, 50, 'the primary Variant threshold is STR x5');
   assert.equal(D.encumbrance().status, 'encumbered');
   assert.equal(D.speed(), 20);
   C.addItem({ name: 'Load', quantity: 1, weight: 50 }, 'carried');
@@ -411,11 +419,22 @@ test('weight, three encumbrance modes and Push Drag Lift use one canonical calcu
   assert.equal(D.effectiveRollMode('skill', 'Arcana').mode, 'normal');
 });
 
-test('money adjustments add, remove and clamp at zero', () => {
-  fresh(state => { state.character.gear.money = { gp: 10, ep: 2, sp: 0, cp: 1, pp: 0 }; });
-  const applied = C.adjustMoney({ pp: 2, gp: 5, ep: -9, sp: 3, cp: -1 });
-  assert.deepEqual(applied, { pp: 2, gp: 5, ep: -2, sp: 3, cp: -1 });
-  assert.deepEqual(S.get().character.gear.money, { gp: 15, ep: 0, sp: 3, cp: 0, pp: 2 });
+test('world currencies stay separate while total and favorite displays convert consistently', () => {
+  fresh();
+  assert.deepEqual(C.adjustCurrency('italy', { g: 3, s: 12, c: 4 }), { g: 3, s: 12, c: 4 });
+  assert.deepEqual(C.adjustCurrency('austria-hungary', { s: 8 }), { g: 0, s: 8, c: 0 });
+  let summary = D.currencySummary();
+  assert.equal(summary.totalCp, 504);
+  assert.deepEqual(summary.amounts, { g: 5, s: 0, c: 4 }, 'total display normalizes all national accounts to G/S/C');
+  assert.equal(C.setFavoriteCurrency('italy'), true);
+  assert.equal(C.setCurrencyDisplayMode('favorite'), true);
+  summary = D.currencySummary();
+  assert.equal(summary.favoriteId, 'italy');
+  assert.deepEqual(summary.amounts, { g: 3, s: 12, c: 4 }, 'favorite display preserves the actual national coin counts');
+  assert.deepEqual(C.adjustCurrency('italy', { g: -99, s: -2, c: -9 }), { g: -3, s: -2, c: -4 }, 'removing coins clamps each denomination at zero');
+  assert.equal(D.currencySummary().totalCp, 180);
+  C.setOtherPossessions('A deed and a safe-deposit key.');
+  assert.equal(S.get().character.gear.otherPossessions, 'A deed and a safe-deposit key.');
 });
 
 test('Short and Long Rest apply only the recovery choices selected', () => {
@@ -458,6 +477,12 @@ test('catalog exposes official prices, containers, tags and Luky firearm variant
   assert.ok(byName('Rapier').tags.includes('finesse'));
   assert.ok(byName('Longbow').tags.includes('martial'));
   assert.ok(byName('Longbow').tags.includes('ranged'));
+  assert.equal([...Catalog.CURATED_FALLBACK, ...Catalog.HOME_BREW_ITEMS].every(item => Number.isFinite(Number(item.weight))), true, 'the built-in catalog never renders an unknown weight');
+  assert.deepEqual(D.itemKeyStats(byName('Rapier')), ['1d8', 'Finesse', 'One-Handed']);
+  assert.deepEqual(D.itemKeyStats(byName('Leather Armor')), ['Light Armor', 'AC 11']);
+  const inferredRing = GearRules.inferItemWeight({ name: 'Ring of Mystery', kind: 'Magic Item', category: 'Ring' });
+  assert.equal(inferredRing.value, 0.02);
+  assert.equal(inferredRing.estimated, true);
 
   const firearms = Object.fromEntries(Catalog.HOME_BREW_ITEMS.map(item => [item.name, item]));
   assert.deepEqual(Object.keys(firearms).sort(), ['Browning 1900', 'Derringer', 'Karabina', 'Mannlicher M 1903', 'Mauser M 98', 'Mondrogón M 1908', 'Parabella', 'Revolver'].sort());
@@ -511,19 +536,26 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.equal(loadedSource.includes('stopImmediatePropagation'), false);
   assert.equal(loadedSource.includes('location.reload'), false);
   const app = fs.readFileSync(path.join(root, 'js/ui/app-v9.js'), 'utf8');
+  const treasureData = fs.readFileSync(path.join(root, 'js/classes/treasure-hunter/data-v7s.js'), 'utf8');
+  const relicData = fs.readFileSync(path.join(root, 'js/classes/treasure-hunter/relics-v7s.js'), 'utf8');
   assert.match(app, /'attack-slide': 'indy-slide'/);
   assert.match(app, /function renderActionTree/);
   assert.match(app, /HIT \$\{esc\(record\.hit\)\}/);
   assert.match(app, /id="hpAmountWheel"/);
   assert.match(app, /id="hpAmountInput"/);
   assert.match(app, /smooth && adjacent \? 'smooth' : 'auto'/);
-  assert.match(index, /service-worker\.js\?v=9\.4\.0/);
+  assert.match(app, /return `\$\{Math\.max\(1, Number\(count\) \|\| 1\)\}\$\{die\}`/, 'Cool die always includes its quantity, for example 1d8');
+  assert.match(app, /PRECISION \+\$\{coolDice\(1, source\)\} DMG/);
+  assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
+  assert.match(index, /service-worker\.js\?v=9\.5\.0/);
+  assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
   assert.match(index, /id="builderBtn"/);
   assert.match(index, /class="icon-btn builder-anvil"/);
   assert.equal(index.includes('id="editBtn"'), false, 'top bar has one canonical Builder entry point');
-  assert.match(app, /\['pp', 'PP', 'P'\], \['gp', 'GP', 'G'\], \['ep', 'EP', 'E'\], \['sp', 'SP', 'S'\], \['cp', 'CP', 'C'\]/);
+  assert.match(app, /function renderMoneyDialog/);
+  assert.match(app, /GearRules\.WORLD_CURRENCIES/);
   assert.match(app, /\['relicsPage', 'RELICS', 'relics'\]/, 'Relics declares its subclass system dependency');
   assert.match(app, /function visiblePages/);
   assert.equal(app.includes('data-action-filter'), true, 'Actions exposes compact type filters');
@@ -542,7 +574,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /id="hpTempSet"/);
   assert.match(app, /class="action-cool-spend"/);
   assert.match(app, /parentDialog && button\.value === 'cancel'/, 'dialog Cancel buttons close without submitting their forms');
-  assert.match(app, /money\$\{id\}Delta/);
+  assert.match(app, /money\$\{key\.toUpperCase\(\)\}Delta/);
   assert.match(app, /data-item-equip/);
   assert.equal(app.includes('data-builder-tab="progression"'), false, 'Progression belongs only on Features');
   assert.match(app, /Proficiencies & Masteries/);
@@ -553,8 +585,11 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.npc-card-main/);
   assert.match(v9Css, /scrollbar-width:none/);
   assert.match(v9Css, /\.action-filter-bar\{display:flex;flex-wrap:wrap/);
+  assert.match(v9Css, /\.load-strip/);
+  assert.match(v9Css, /\.money-total/);
+  assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-9/);
-  assert.match(worker, /app-v9\.js\?v=9\.4\.0/);
+  assert.match(worker, /character-sheet-v9-ux-10/);
+  assert.match(worker, /app-v9\.js\?v=9\.5\.0/);
 });
