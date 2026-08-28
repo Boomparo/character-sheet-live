@@ -5,7 +5,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 18;
-  const APP_VERSION = '9.10.0-desktop';
+  const APP_VERSION = '9.10.1-desktop-polish';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
