@@ -194,6 +194,27 @@
       };
       let score = record.group === 'core' ? 1 : 3;
       const reasons = [];
+      let aptitude = null;
+      if (/grapple|shove/.test(text)) aptitude = { label: 'STR', value: mod('STR', source), kind: 'ability' };
+      else if (/line attack|attack slide|skluz|slide/.test(text)) aptitude = { label: 'DEX', value: mod('DEX', source), kind: 'ability' };
+      else if (/\bhide\b/.test(text)) aptitude = { label: 'Stealth', value: skillMod('Stealth', source), kind: 'skill' };
+      else if (/\bsearch\b/.test(text)) {
+        const skills = ['Perception', 'Investigation', 'Insight', 'Survival'].map(name => ({ label: name, value: skillMod(name, source), kind: 'skill' }));
+        aptitude = skills.sort((a, b) => b.value - a.value)[0];
+      } else if (/\bstudy\b/.test(text)) {
+        const skills = ['Arcana', 'History', 'Investigation', 'Nature', 'Religion'].map(name => ({ label: name, value: skillMod(name, source), kind: 'skill' }));
+        aptitude = skills.sort((a, b) => b.value - a.value)[0];
+      } else if (/\binfluence\b/.test(text)) {
+        const skills = ['Deception', 'Intimidation', 'Persuasion'].map(name => ({ label: name, value: skillMod(name, source), kind: 'skill' }));
+        aptitude = skills.sort((a, b) => b.value - a.value)[0];
+      } else if (record.ability && S.A.includes(record.ability)) aptitude = { label: record.ability, value: mod(record.ability, source), kind: 'ability' };
+      else if (Number.isFinite(Number(record.hit))) aptitude = { label: 'Attack', value: Number(record.hit), kind: 'attack' };
+      if (aptitude) {
+        const strong = aptitude.kind === 'ability' ? aptitude.value >= 2 : aptitude.kind === 'attack' ? aptitude.value >= 5 : aptitude.value >= 4;
+        const weak = aptitude.kind === 'ability' ? aptitude.value <= -1 : aptitude.kind === 'attack' ? aptitude.value <= 2 : aptitude.value <= 0;
+        if (strong) { score += 3; reasons.push(`Strong ${aptitude.label} ${signed(aptitude.value)}`); }
+        else if (weak) { score -= aptitude.kind === 'ability' && aptitude.value <= -2 ? 6 : 3; reasons.push(`Weak ${aptitude.label} ${signed(aptitude.value)}`); }
+      }
       if (tags[goal]) { score += 6; reasons.push({ damage: 'Direct damage option', control: 'Matches the control goal', defence: 'Improves survival', escape: 'Helps reposition or escape' }[goal]); }
       if (enemies === 'group' && tags.group) { score += 5; reasons.push('Useful against a group'); }
       if (enemies === 'single' && tags.damage && !tags.group) { score += 2; reasons.push('Focused on one target'); }
