@@ -535,7 +535,7 @@
   function spendAmmunition(weaponId) {
     const source = S.get();
     const weapon = D.weaponAttacks(source, { includeUnequipped: true }).find(attack => attack.id === weaponId);
-    if (!weapon?.firearm) return { ok: false, reason: 'weapon' };
+    if (!weapon?.ammunitionType) return { ok: false, reason: 'weapon' };
     const summary = D.ammunitionSummaryForWeapon(weapon, source);
     const stack = summary.entries.find(entry => entry.count > 0);
     if (!stack) return { ok: false, reason: 'empty', type: summary.type, remaining: 0 };
@@ -564,7 +564,7 @@
     let ammo = null;
     if (payload.spendAmmo && payload.weaponId) {
       const weapon = D.weaponAttacks(source, { includeUnequipped: true }).find(attack => attack.id === payload.weaponId);
-      if (!weapon?.firearm) return { ok: false, reason: 'weapon' };
+      if (!weapon?.ammunitionType) return { ok: false, reason: 'weapon' };
       const summary = D.ammunitionSummaryForWeapon(weapon, source);
       const stack = summary.entries.find(entry => entry.count > 0);
       if (!stack) return { ok: false, reason: 'ammunition', type: summary.type, available: 0 };
@@ -590,7 +590,7 @@
     };
   }
 
-  function levelUp(targetLevel) {
+  function levelUp(targetLevel, selections = {}) {
     const source = S.get();
     const current = D.level(source);
     const target = clamp(targetLevel, 1, 20);
@@ -598,6 +598,12 @@
     const oldMax = D.hpMax(source);
     const oldDamage = Math.max(0, oldMax - number(source.character.hp.current));
     update(state => {
+      const choices = state.classes.treasureHunter.choices;
+      for (const [key, raw] of Object.entries(selections || {})) {
+        const value = Array.isArray(raw) ? raw.map(entry => String(entry || '')) : String(raw || '');
+        choices[key] = value;
+        if (key === 'subclass') choices.subclassConfirmed = !!value;
+      }
       state.character.level = target;
       const nextMax = D.hpMax(state);
       state.character.hp.max = nextMax;
@@ -799,7 +805,7 @@
       const next = {
         name: String(payload.name || 'NPC'), profession: String(payload.profession || payload.tag || ''),
         nationality: String(payload.nationality || ''), location: String(payload.location || ''),
-        notes: String(payload.notes || ''), image: payload.image || '', relations: Array.isArray(payload.relations) ? S.clone(payload.relations) : (current?.relations || []),
+        notes: String(payload.notes || ''), image: payload.image || '', thumbnail: payload.thumbnail || '', relations: Array.isArray(payload.relations) ? S.clone(payload.relations) : (current?.relations || []),
         favorite: payload.favorite == null ? !!current?.favorite : !!payload.favorite,
         createdAt: current?.createdAt || now, updatedAt: now
       };

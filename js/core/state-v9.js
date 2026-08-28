@@ -4,8 +4,8 @@
   const GearRules = window.GearRulesV9;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 16;
-  const APP_VERSION = '9.7.0-smart-play';
+  const SCHEMA_VERSION = 17;
+  const APP_VERSION = '9.8.0-quick-play';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -45,6 +45,7 @@
         abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
         conditions: [], exhaustion: 0, skills: {},
         rollModes: { initiative: 'normal', attacks: 'normal', skills: {}, saves: {} },
+        situationalAdvantages: [],
         customActions: [], spells: [],
         damageDefenses: { resistances: [], immunities: [], vulnerabilities: [], conditionImmunities: [] },
         proficiencies: {
@@ -324,6 +325,11 @@
         if (!validModes.has(c.rollModes[bucket][key])) c.rollModes[bucket][key] = 'normal';
       }
     }
+    c.situationalAdvantages = array(c.situationalAdvantages).map(entry => ({
+      kind: ['skill', 'save', 'attack', 'initiative'].includes(entry?.kind) ? entry.kind : 'skill',
+      key: String(entry?.key || ''), mode: entry?.mode === 'disadvantage' ? 'disadvantage' : 'advantage',
+      condition: String(entry?.condition || ''), source: String(entry?.source || 'Other')
+    })).filter(entry => entry.key && entry.condition);
 
     const origin = c.origin;
     origin.species = String(origin.species || c.race || '');
@@ -387,6 +393,7 @@
       npc.location = String(npc.location || '');
       npc.notes = String(npc.notes || '');
       npc.image = String(npc.image || '');
+      npc.thumbnail = String(npc.thumbnail || '');
       npc.favorite = !!npc.favorite;
       npc.createdAt = String(npc.createdAt || npc.addedAt || new Date(index * 1000).toISOString());
       npc.updatedAt = String(npc.updatedAt || npc.createdAt);
@@ -573,14 +580,8 @@
   function modifier(score) { return Math.floor((number(score, 10) - 10) / 2); }
   function signed(value) { return number(value, 0) >= 0 ? `+${number(value, 0)}` : String(number(value, 0)); }
 
-  async function imageToThumb(file, max = 420, quality = 0.78) {
-    if (!file) return '';
-    const source = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  async function imageDataToThumb(source, max = 420, quality = 0.78) {
+    if (!source) return '';
     const image = await new Promise((resolve, reject) => {
       const element = new Image();
       element.onload = () => resolve(element);
@@ -595,13 +596,24 @@
     return canvas.toDataURL('image/jpeg', quality);
   }
 
+  async function imageToThumb(file, max = 420, quality = 0.78) {
+    if (!file) return '';
+    const source = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    return imageDataToThumb(source, max, quality);
+  }
+
   const api = {
     KEY, LEGACY_KEYS, SCHEMA_VERSION, APP_VERSION, A, ITEM_LOCATIONS,
     get: () => state,
     update, replace, save, flush, undo, history, clearHistory,
     fresh: () => normalize(baseState(), { skipAbilityMigration: true }),
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    modifier, signed, clone, uid, normalize, imageToThumb
+    modifier, signed, clone, uid, normalize, imageToThumb, imageDataToThumb
   };
 
   window.CharacterState = api;

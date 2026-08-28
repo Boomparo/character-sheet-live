@@ -536,6 +536,15 @@
     return fixed.locked ? fixed : { mode: manual || 'normal', locked: false, sources: [] };
   }
 
+  function situationalRollHints(kind, key, value) {
+    const source = state(value);
+    const hints = (source.character.situationalAdvantages || []).filter(entry => entry.kind === kind && entry.key === key).map(entry => ({ ...entry }));
+    if (kind === 'skill' && Origin.species(source)?.id === 'city_goblin_lukys_campaign' && ['Deception', 'Insight', 'Intimidation', 'Persuasion'].includes(key)) {
+      hints.push({ kind, key, mode: 'advantage', source: 'City Goblin · Child of the Street', condition: 'When dealing with criminals and society outcasts.' });
+    }
+    return hints;
+  }
+
   function canonicalWeaponName(item) {
     return String(item?.masteryWeapon || item?.raw?.name || item?.name || '').trim();
   }
@@ -823,7 +832,7 @@
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
     saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
     choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, fixedInitiative, fixedSave, fixedSkill,
-    fixedAttack, effectiveRollMode, weaponMasteryProperty, weaponMasteryEntries, proficiencyEntries, proficiencyLists, damageDefenseEntries, damageDefenses, weaponAttacks, itemActions, weaponEnhancement,
+    fixedAttack, effectiveRollMode, situationalRollHints, weaponMasteryProperty, weaponMasteryEntries, proficiencyEntries, proficiencyLists, damageDefenseEntries, damageDefenses, weaponAttacks, itemActions, weaponEnhancement,
     relicMax, choiceRequirements, originActions, signed
   };
   window.V7SDerived = window.CharacterDerived;

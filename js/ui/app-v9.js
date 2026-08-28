@@ -58,10 +58,10 @@
 
   const local = {
     featureSearch: '', catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
-    catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '',
+    catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '', pendingNpcThumbnail: '',
     pendingNpcRelations: [], activeNpcId: '', activeItemId: '', activeCurrencyId: 'generic', restMode: 'short', restHitDice: 0,
-    builderTab: 'setup', catalogItems: [], activeActionId: '', activeJournalId: '', exchangeToId: '', searchResults: [],
-    scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: ''
+    builderTab: 'setup', levelUpStep: 0, levelUpSelections: {}, catalogItems: [], activeActionId: '', activeJournalId: '', exchangeToId: '', searchResults: [],
+    scrollTimer: 0, scrollRaf: 0, hpWheelRaf: 0, visiblePageSignature: '', npcThumbsPending: new Set()
   };
 
   const $ = selector => document.querySelector(selector);
@@ -141,6 +141,11 @@
     if (!result || !['advantage', 'disadvantage'].includes(result.mode)) return '';
     const title = result.locked && result.sources?.length ? `Forced by ${result.sources.join(', ')}` : result.mode;
     return `<span class="roll-indicator ${result.mode}" title="${esc(title)}" aria-label="${esc(title)}">${result.mode === 'advantage' ? 'A' : 'D'}</span>`;
+  }
+  function situationalIndicator(hints) {
+    if (!hints?.length) return '';
+    const title = hints.map(hint => `${hint.source}: ${hint.condition}`).join(' · ');
+    return `<span class="situational-advantage" title="${esc(title)}" aria-label="Situational Advantage. ${esc(title)}">A*</span>`;
   }
   function toast(message, type = 'success', options = {}) {
     const host = $('#toastHost');
@@ -279,7 +284,7 @@
     const source = state();
     const records = [];
     D.weaponAttacks(source).forEach(weapon => {
-      const ammunition = weapon.firearm ? D.ammunitionSummaryForWeapon(weapon, source) : null;
+      const ammunition = weapon.ammunitionType ? D.ammunitionSummaryForWeapon(weapon, source) : null;
       records.push({
         id: `weapon:${weapon.id}`, weaponId: weapon.id, name: weapon.name, action: 'Action', source: 'Weapon', group: 'weapons',
         summary: [weapon.rangeText ? `Range: ${weapon.rangeText}` : '', weapon.propertiesText ? `Properties: ${weapon.propertiesText}` : '', weapon.description || ''].filter(Boolean).join('\n'),
@@ -337,10 +342,10 @@
     const breakdown = record.attackBreakdown?.length ? `<details class="attack-breakdown"><summary>Attack calculation</summary><div class="formula-list">${record.attackBreakdown.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></details>` : '';
     const fullDamage = record.damage ? `<div class="action-damage-detail"><b>DAMAGE</b><span>${esc(record.damage)}</span></div>` : '';
     const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(record.name)}"><b>${record.cost}</b><span>COOL</span></button>` : '';
-    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Use ${esc(record.name)} and manage ${esc(record.ammunition.type || 'bullet')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'USE · −1' : 'EMPTY'}</span></button>` : '';
+    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(record.name)} and spend 1 ${esc(record.ammunition.type || 'ammunition')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span><small>${esc(record.ammunition.type || 'ammunition')}</small></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}" data-search-anchor="action:${esc(record.id)}">
-      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
+      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
       <div class="row-detail">${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
@@ -411,7 +416,8 @@
     const rows = Object.entries(D.SKILLS).map(([name, ability]) => {
       const status = D.skillStatus(name, source);
       const mode = D.effectiveRollMode('skill', name, source);
-      return `<div class="skill-row"><button type="button" class="prof-dot ${status === 2 ? 'expert' : status === 1 ? 'prof' : ''}" data-skill-edit="${esc(name)}" aria-label="Edit ${esc(name)} proficiency">${status === 2 ? '◆' : status === 1 ? '●' : '○'}</button><button type="button" class="skill-name" data-stat-detail="skill:${esc(name)}">${esc(name)}</button><span class="skill-ability">${ability}</span><span class="skill-mod">${S.signed(D.skillMod(name, source))}</span>${rollIndicator(mode)}</div>`;
+      const situational = D.situationalRollHints('skill', name, source);
+      return `<div class="skill-row"><button type="button" class="prof-dot ${status === 2 ? 'expert' : status === 1 ? 'prof' : ''}" data-skill-edit="${esc(name)}" aria-label="Edit ${esc(name)} proficiency">${status === 2 ? '◆' : status === 1 ? '●' : '○'}</button><button type="button" class="skill-name" data-stat-detail="skill:${esc(name)}">${esc(name)}</button><span class="skill-ability">${ability}</span><span class="skill-mod">${S.signed(D.skillMod(name, source))}</span><span class="skill-roll-hints">${situationalIndicator(situational)}${rollIndicator(mode)}</span></div>`;
     }).join('');
     const entries = D.proficiencyEntries(source);
     const details = (label, values) => `<details class="proficiency"><summary>${esc(label)} <small>${values.length}</small></summary><div class="prof-body source-list">${values.map(entry => `<span class="source-entry"><span>${esc(entry.name)}</span>${entry.description ? `<p>${nl(entry.description)}</p>` : ''}<small>${esc(entry.sources.join(' · ') || 'Manual')}</small></span>`).join('') || '<span class="muted">—</span>'}</div></details>`;
@@ -709,6 +715,13 @@
   function renderRelationMap(source) {
     const npcs = [...(source.campaign.npcs || [])].sort((a, b) => a.name.localeCompare(b.name));
     if (!npcs.length) return section('Relationship Map', '<div class="empty">Add NPCs to build the relationship map.</div>');
+    for (const npc of npcs) if (npc.image && !npc.thumbnail && !local.npcThumbsPending.has(npc.id)) {
+      local.npcThumbsPending.add(npc.id);
+      S.imageDataToThumb(npc.image, 96, 0.64).then(thumbnail => S.update(next => {
+        const saved = next.campaign.npcs.find(entry => entry.id === npc.id);
+        if (saved && saved.image === npc.image) saved.thumbnail = thumbnail;
+      }, 'derived:npc-thumbnail')).catch(() => {}).finally(() => local.npcThumbsPending.delete(npc.id));
+    }
     const centerX = 300, centerY = 205, radiusX = npcs.length === 1 ? 0 : 225, radiusY = npcs.length === 1 ? 0 : 145;
     const positions = new Map(npcs.map((npc, index) => {
       const angle = -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, npcs.length);
@@ -723,9 +736,10 @@
     const nodes = npcs.map(npc => {
       const point = positions.get(npc.id);
       const initials = npc.name.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
-      return `<g class="relation-node ${npc.favorite ? 'favorite' : ''}" data-npc-map-open="${esc(npc.id)}" transform="translate(${point.x} ${point.y})" tabindex="0" role="button"><circle r="31"></circle><text class="initials" y="5">${esc(initials || '?')}</text><text class="name" y="48">${esc(npc.name)}</text></g>`;
+      const portrait = npc.thumbnail ? `<image href="${esc(npc.thumbnail)}" x="-28" y="-28" width="56" height="56" preserveAspectRatio="xMidYMid slice" clip-path="url(#relationPortraitClip)"></image>` : `<text class="initials" y="5">${esc(initials || '?')}</text>`;
+      return `<g class="relation-node ${npc.favorite ? 'favorite' : ''}" data-npc-map-open="${esc(npc.id)}" transform="translate(${point.x} ${point.y})" tabindex="0" role="button"><circle r="31"></circle>${portrait}<text class="name" y="48">${esc(npc.name)}</text></g>`;
     }).join('');
-    return section('Relationship Map', `<p class="muted">Tap a person to open their dossier. Arrows follow the relations saved on each NPC.</p><div class="relation-map"><svg viewBox="0 0 600 420" role="img" aria-label="NPC relationship map"><defs><marker id="relationArrow" markerWidth="8" markerHeight="8" refX="36" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker></defs>${edges.join('')}${nodes}</svg></div>`);
+    return section('Relationship Map', `<p class="muted">Tap a person to open their dossier. Arrows follow the relations saved on each NPC.</p><div class="relation-map"><svg viewBox="0 0 600 420" role="img" aria-label="NPC relationship map"><defs><marker id="relationArrow" markerWidth="8" markerHeight="8" refX="36" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z"></path></marker><clipPath id="relationPortraitClip"><circle r="28"></circle></clipPath></defs>${edges.join('')}${nodes}</svg></div>`);
   }
 
   function renderNpcs() {
@@ -826,6 +840,7 @@
 
     document.body.insertAdjacentHTML('beforeend', `
       <dialog id="builderDialog" class="sheet-dialog builder-dialog"><form method="dialog" id="builderForm"><div class="dialog-head"><strong>Character Builder</strong><button value="cancel" class="icon-btn">×</button></div><div class="builder-tabs"><button type="button" data-builder-tab="setup">SETUP & CHOICES</button><button type="button" data-builder-tab="levelup">LEVEL UP</button><button type="button" data-builder-tab="data">JSON DATA</button></div><div id="builderBody"></div><menu><button value="cancel" class="ghost">Close</button><button id="builderSave" type="submit" class="primary">Save Setup</button></menu></form></dialog>
+      <dialog id="levelUpDialog" class="sheet-dialog level-up-dialog"><form method="dialog"><div class="dialog-head"><strong>Level Up</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="levelUpWizard"></div></form></dialog>
       <dialog id="bioDialog" class="sheet-dialog"><form method="dialog" id="bioForm"><div class="dialog-head"><strong>Character Bio</strong><button value="cancel" class="icon-btn">×</button></div><div id="bioFields"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Bio</button></menu></form></dialog>
       <dialog id="moneyDialog" class="sheet-dialog money-dialog"></dialog>
       <dialog id="restDialog" class="sheet-dialog rest-dialog"><form method="dialog" id="restForm"><div class="dialog-head"><strong id="restTitle">Rest</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="restBody"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary" id="finishRest">Finish Rest</button></menu></form></dialog>
@@ -1048,7 +1063,46 @@
       ['Cool Points', T.coolTotal(current), T.coolTotal(target)],
       ['Cool die', coolDice(1, source), coolDice(1, preview)]
     ];
-    $('#builderBody').innerHTML = `<section class="level-up-hero"><small>NEXT TREASURE HUNTER LEVEL</small><div><b>${current}</b><i>→</i><strong>${target}</strong></div></section><section class="builder-block"><h3>What changes</h3><div class="level-up-stats">${changes.map(([label, before, after]) => `<div class="${String(before) === String(after) ? 'unchanged' : ''}"><span>${esc(label)}</span><small>${esc(before)}</small><i>→</i><b>${esc(after)}</b></div>`).join('')}</div></section><section class="builder-block"><h3>New features</h3><div class="level-up-features">${featureRows || '<span class="muted">No new named feature at this level.</span>'}</div></section>${required.length ? `<section class="builder-block level-up-required"><h3>Choices after leveling</h3>${required.map(choice => `<div>• ${esc(choice)}</div>`).join('')}<small>You will be taken to Setup & Choices after applying the level.</small></section>` : ''}<button type="button" class="primary level-up-apply" data-level-up-apply="${target}">Confirm level ${target}</button>`;
+    $('#builderBody').innerHTML = `<section class="level-up-hero"><small>NEXT TREASURE HUNTER LEVEL</small><div><b>${current}</b><i>→</i><strong>${target}</strong></div></section><section class="builder-block"><h3>What changes</h3><div class="level-up-stats">${changes.map(([label, before, after]) => `<div class="${String(before) === String(after) ? 'unchanged' : ''}"><span>${esc(label)}</span><small>${esc(before)}</small><i>→</i><b>${esc(after)}</b></div>`).join('')}</div></section><section class="builder-block"><h3>New features</h3><div class="level-up-features">${featureRows || '<span class="muted">No new named feature at this level.</span>'}</div></section>${required.length ? `<section class="builder-block level-up-required"><h3>Choices during Level Up</h3>${required.map(choice => `<div>• ${esc(choice)}</div>`).join('')}<small>The full-screen guide collects these choices before applying the level.</small></section>` : ''}<button type="button" class="primary level-up-apply" data-level-up-open>Start guided Level Up</button>`;
+  }
+
+  function levelUpChoiceDefinitions(target) {
+    return T.features.filter(feature => feature.level === target).flatMap(feature => (T.choiceDefinitions?.[feature.id] || []).map(definition => ({ feature, definition })));
+  }
+  function levelUpPreview() {
+    const preview = S.normalize(S.clone(state()), { skipAbilityMigration: true });
+    preview.character.level = Math.min(20, D.level(state()) + 1);
+    Object.assign(preview.classes.treasureHunter.choices, S.clone(local.levelUpSelections));
+    if (local.levelUpSelections.subclass != null) preview.classes.treasureHunter.choices.subclassConfirmed = !!local.levelUpSelections.subclass;
+    return preview;
+  }
+  function levelUpChoiceField(feature, definition, source) {
+    const raw = local.levelUpSelections[definition.key] ?? source.classes.treasureHunter.choices[definition.key];
+    const values = Array.isArray(raw) ? raw : [raw || ''];
+    return `<div class="level-up-choice"><b>${esc(feature.name)}</b><small>${esc(definition.label)}</small>${Array.from({ length: definition.count }, (_, index) => { const selected = values[index] || ''; return ['select', 'skill', 'weapon'].includes(definition.type) ? `<select data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}"><option value="">Choose…</option>${choiceOptions(definition, selected, source, values, index)}</select>` : `<input data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}" value="${esc(selected)}" placeholder="${esc(definition.placeholder || '')}">`; }).join('')}</div>`;
+  }
+  function renderLevelUpWizard() {
+    const source = state(), current = D.level(source), target = Math.min(20, current + 1), preview = levelUpPreview();
+    const features = T.features.filter(feature => feature.level === target && D.featureMatchesSubclass(feature, preview));
+    const definitions = levelUpChoiceDefinitions(target), totalSteps = features.length + 2;
+    local.levelUpStep = Math.max(0, Math.min(totalSteps - 1, local.levelUpStep));
+    const step = local.levelUpStep;
+    let body;
+    if (!step) {
+      const changes = [['PB', S.signed(D.pb(source)), S.signed(D.pb(preview))], ['MAX HP', D.hpMax(source), D.hpMax(preview)], ['COOL', T.coolTotal(current), T.coolTotal(target)], ['COOL DIE', coolDice(1, source), coolDice(1, preview)]];
+      body = `<div class="level-up-screen"><small>LEVEL ${current} → ${target}</small><h2>What changes</h2><div class="level-up-stats">${changes.map(([label, before, after]) => `<div><span>${label}</span><small>${before}</small><i>→</i><b>${after}</b></div>`).join('')}</div><p>${features.length} new features${definitions.length ? ` · ${definitions.length} required choices` : ''}</p></div>`;
+    } else if (step <= features.length) {
+      const feature = features[step - 1];
+      body = `<div class="level-up-screen feature"><small>NEW FEATURE · ${step}/${features.length}</small><h2>${esc(feature.name)}</h2><div class="level-up-feature-meta"><span>Level ${target}</span><span>${esc(actionCode(feature.action))}</span></div><div class="level-up-rules">${rulesText(feature.fullText || feature.summary || 'No additional rules text.', preview)}</div>${feature.cost ? `<div class="feature-cool-cost">${feature.cost} COOL</div>` : ''}</div>`;
+    } else body = `<div class="level-up-screen choices"><small>FINAL STEP</small><h2>${definitions.length ? 'Make your choices' : 'Ready to level up'}</h2>${definitions.length ? definitions.map(({ feature, definition }) => levelUpChoiceField(feature, definition, preview)).join('') : '<p>No new choices are required at this level.</p>'}<p class="muted">Level and choices save together and can be undone as one change.</p></div>`;
+    const finalStep = step === totalSteps - 1;
+    $('#levelUpWizard').innerHTML = `<div class="level-up-progress"><span>${step + 1}/${totalSteps}</span><i style="--progress:${Math.round((step + 1) / totalSteps * 100)}%"></i></div>${body}<menu class="level-up-nav"><button type="button" class="ghost" data-level-up-back ${step ? '' : 'disabled'}>Back</button>${finalStep ? `<button type="button" class="primary" data-level-up-finish="${target}">Apply level ${target}</button>` : '<button type="button" class="primary" data-level-up-next>Next</button>'}</menu>`;
+  }
+  function openLevelUpWizard() {
+    const target = D.level(state()) + 1;
+    local.levelUpStep = 0;
+    local.levelUpSelections = Object.fromEntries(levelUpChoiceDefinitions(target).map(({ definition }) => [definition.key, S.clone(state().classes.treasureHunter.choices[definition.key] || (definition.count > 1 ? [] : ''))]));
+    renderLevelUpWizard(); showDialog('#levelUpDialog');
   }
 
   function renderBuilder() {
@@ -1116,7 +1170,8 @@
     } else if (kind === 'skill') {
       title = `${key} ${S.signed(D.skillMod(key, source))}`; rollKind = 'skill';
       const grants = D.skillProficiencySources(key, source);
-      body = `<div class="formula-list"><div class="formula-row"><span>Ability (${D.SKILLS[key]})</span><b>${S.signed(D.mod(D.SKILLS[key], source))}</b></div><div class="formula-row"><span>Training</span><b>${D.skillStatus(key, source) === 2 ? 'Expertise' : D.skillStatus(key, source) === 1 ? 'Proficient' : 'None'}</b></div></div><div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(entry.source)}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
+      const situational = D.situationalRollHints('skill', key, source);
+      body = `<div class="formula-list"><div class="formula-row"><span>Ability (${D.SKILLS[key]})</span><b>${S.signed(D.mod(D.SKILLS[key], source))}</b></div><div class="formula-row"><span>Training</span><b>${D.skillStatus(key, source) === 2 ? 'Expertise' : D.skillStatus(key, source) === 1 ? 'Proficient' : 'None'}</b></div></div>${situational.length ? `<div class="situational-list">${situational.map(hint => `<div><b>${situationalIndicator([hint])} Situational ${hint.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}</b><span>${esc(hint.condition)}</span><small>${esc(hint.source)}</small></div>`).join('')}</div>` : ''}<div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(entry.source)}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
     }
     if (rollKind) {
       const effective = D.effectiveRollMode(rollKind, rollKey, source);
@@ -1236,6 +1291,7 @@
     const npc = state().campaign.npcs.find(item => item.id === id) || {};
     local.activeNpcId = npc.id || '';
     local.pendingNpcImage = npc.image || '';
+    local.pendingNpcThumbnail = npc.thumbnail || '';
     local.pendingNpcRelations = S.clone(npc.relations || []);
     $('#npcId').value = npc.id || '';
     $('#npcName').value = npc.name || '';
@@ -1582,19 +1638,31 @@
   function confirmActionUse() {
     const record = actionById(local.activeActionId);
     if (!record) return;
+    if (executeActionRecord(record, !!record.ammunition && ($('#actionUseAmmo')?.checked ?? true))) closeDialog('#actionUseDialog');
+  }
+
+  function executeActionRecord(record, spendAmmo = false) {
     const result = C.executeAction({
       id: record.id, name: record.name, cost: record.cost, featureId: record.featureId, uses: record.uses,
       relicInstanceId: record.resource?.kind === 'relic' ? record.resource.instanceId : '',
-      weaponId: record.weaponId, spendAmmo: !!record.ammunition && ($('#actionUseAmmo')?.checked ?? true)
+      weaponId: record.weaponId, spendAmmo
     });
     if (!result.ok) {
-      const messages = { cool: 'Not enough Cool Points.', uses: 'No feature uses remaining.', charges: 'No relic charges remaining.', ammunition: 'No carried bullets available.', weapon: 'This weapon cannot spend ammunition.' };
+      const messages = { cool: 'Not enough Cool Points.', uses: 'No feature uses remaining.', charges: 'No relic charges remaining.', ammunition: `No carried ${record.ammunition?.type || 'ammunition'} available.`, weapon: 'This weapon cannot spend ammunition.' };
       toast(messages[result.reason] || 'The action could not be used.', 'warn');
-      return;
+      return false;
     }
-    closeDialog('#actionUseDialog');
     const spent = [result.cost ? `${result.cost} Cool` : '', result.ammunition ? `1 ${result.ammunition.type || 'bullet'}` : '', result.featureUse ? '1 use' : '', result.relicUse ? '1 charge' : ''].filter(Boolean).join(' · ');
     toastUndo(`${record.name} used${spent ? ` · ${spent}` : ''}.`);
+    return true;
+  }
+
+  function triggerActionUse(id) {
+    const record = actionById(id);
+    if (!record) return;
+    const trackedCosts = [!!record.cost, !!record.uses, !!record.resource, !!record.ammunition].filter(Boolean).length;
+    if (trackedCosts <= 1) { executeActionRecord(record, !!record.ammunition); return; }
+    openActionUse(id);
   }
 
   function onClick(event) {
@@ -1668,7 +1736,7 @@
     if (button.dataset.actionFilter) { C.setUi('actionFilter', button.dataset.actionFilter); return; }
     if (button.dataset.actionToggle) { C.toggleOpen('action', button.dataset.actionToggle); return; }
     if (button.dataset.actionFavorite) { C.toggleFavorite('action', button.dataset.actionFavorite); return; }
-    if (button.dataset.actionUse) { openActionUse(button.dataset.actionUse); return; }
+    if (button.dataset.actionUse) { triggerActionUse(button.dataset.actionUse); return; }
     if (button.hasAttribute('data-new-action')) { $('#actionForm').reset(); showDialog('#actionDialog'); return; }
     if (button.dataset.customActionRemove) { if (confirm('Delete this custom action?')) C.removeCustomAction(button.dataset.customActionRemove); return; }
     if (button.dataset.featureUse) { C.toggleFeatureUse(button.dataset.featureUse, button.dataset.delta); return; }
@@ -1790,7 +1858,7 @@
     if (button.dataset.npcRelationRemove != null) { local.pendingNpcRelations.splice(Number(button.dataset.npcRelationRemove), 1); renderNpcRelationsEditor(); return; }
     if (button.hasAttribute('data-npc-image-storage')) { $('#npcImageStorage').click(); return; }
     if (button.hasAttribute('data-npc-image-camera')) { $('#npcImageCamera').click(); return; }
-    if (button.hasAttribute('data-npc-image-remove')) { local.pendingNpcImage = ''; $('#npcImagePreview').innerHTML = '<span>No portrait</span>'; return; }
+    if (button.hasAttribute('data-npc-image-remove')) { local.pendingNpcImage = ''; local.pendingNpcThumbnail = ''; $('#npcImagePreview').innerHTML = '<span>No portrait</span>'; return; }
     if (button.hasAttribute('data-bio-edit')) { openBio(); return; }
     if (button.hasAttribute('data-new-journal')) { openJournal(); return; }
     if (button.dataset.journalOpen) { openJournal(button.dataset.journalOpen); return; }
@@ -1807,13 +1875,16 @@
     }
 
     if (button.dataset.builderTab) { local.builderTab = button.dataset.builderTab; renderBuilder(); return; }
-    if (button.dataset.levelUpApply) {
-      const result = C.levelUp(button.dataset.levelUpApply);
+    if (button.hasAttribute('data-level-up-open')) { openLevelUpWizard(); return; }
+    if (button.hasAttribute('data-level-up-back')) { local.levelUpStep--; renderLevelUpWizard(); return; }
+    if (button.hasAttribute('data-level-up-next')) { local.levelUpStep++; renderLevelUpWizard(); return; }
+    if (button.dataset.levelUpFinish) {
+      const target = Number(button.dataset.levelUpFinish);
+      const missing = levelUpChoiceDefinitions(target).filter(({ definition }) => { const raw = local.levelUpSelections[definition.key]; const values = Array.isArray(raw) ? raw : [raw]; return values.filter(Boolean).length < definition.count || (definition.unique && new Set(values.filter(Boolean)).size !== values.filter(Boolean).length); });
+      if (missing.length) { toast('Complete every required Level Up choice.', 'warn'); return; }
+      const result = C.levelUp(target, local.levelUpSelections);
       if (!result.ok) { toast(result.reason === 'maximum' ? 'Maximum level reached.' : 'Level-up must advance exactly one level.', 'warn'); return; }
-      local.builderTab = result.missing.length ? 'setup' : 'levelup';
-      renderBuilder();
-      toastUndo(`Level ${result.to} applied${result.missing.length ? ' · complete the highlighted choices' : ''}.`, result.missing.length ? 'warn' : 'success');
-      return;
+      closeDialog('#levelUpDialog'); closeDialog('#builderDialog'); toastUndo(`Level ${result.to} applied.`); return;
     }
     if (button.hasAttribute('data-builder-copy-json')) {
       const text = $('#builderJson').value;
@@ -1844,6 +1915,12 @@
 
   function onChange(event) {
     const target = event.target;
+    if (target.dataset.levelUpChoice) {
+      const key = target.dataset.levelUpChoice, index = Number(target.dataset.choiceIndex) || 0;
+      if (Array.isArray(local.levelUpSelections[key])) local.levelUpSelections[key][index] = target.value;
+      else local.levelUpSelections[key] = target.value;
+      return;
+    }
     if (target.id === 'encumbranceMode' || target.id === 'statEncumbranceMode') { C.setEncumbranceMode(target.value); if (target.id === 'statEncumbranceMode') openStatDetail('encumbrance'); return; }
     if (target.id === 'moneyCurrencySelect') { local.activeCurrencyId = target.value; renderMoneyDialog(); return; }
     if (target.id === 'exchangeCurrencyTo') { local.exchangeToId = target.value; return; }
@@ -1889,7 +1966,7 @@
     }
     if (target.id === 'npcImageStorage' || target.id === 'npcImageCamera') {
       const file = target.files?.[0]; if (!file) return;
-      const done = result => { local.pendingNpcImage = result; $('#npcImagePreview').innerHTML = `<img src="${esc(result)}" alt="">`; };
+      const done = result => { local.pendingNpcImage = result; local.pendingNpcThumbnail = ''; $('#npcImagePreview').innerHTML = `<img src="${esc(result)}" alt="">`; S.imageDataToThumb(result, 96, 0.64).then(thumbnail => { if (local.pendingNpcImage === result) local.pendingNpcThumbnail = thumbnail; }).catch(() => {}); };
       if (Cropper) Cropper.open(file, done); else S.imageToThumb(file).then(done).catch(() => toast('NPC portrait could not be read.', 'warn'));
       return;
     }
@@ -1940,7 +2017,7 @@
       closeDialog('#actionDialog'); toast('Custom action added.'); return;
     }
     if (form.id === 'npcForm') {
-      C.saveNpc({ id: $('#npcId').value, name: $('#npcName').value, profession: $('#npcProfession').value, nationality: $('#npcNationality').value, location: $('#npcLocation').value, notes: $('#npcNotes').value, image: local.pendingNpcImage, relations: local.pendingNpcRelations });
+      C.saveNpc({ id: $('#npcId').value, name: $('#npcName').value, profession: $('#npcProfession').value, nationality: $('#npcNationality').value, location: $('#npcLocation').value, notes: $('#npcNotes').value, image: local.pendingNpcImage, thumbnail: local.pendingNpcThumbnail, relations: local.pendingNpcRelations });
       closeDialog('#npcDialog'); toastUndo('NPC saved.'); return;
     }
     if (form.id === 'journalForm') {

@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.7.0-smart-play');
+assert.equal(S.APP_VERSION, '9.8.0-quick-play');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -62,7 +62,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 16);
+  assert.equal(state.schemaVersion, 17);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -305,6 +305,8 @@ test('origin mechanics are derived without inventing missing species mechanics',
   assert.equal(D.ability('DEX'), 16);
   assert.equal(D.speed(), 25);
   assert.equal(D.skillStatus('Stealth'), 1);
+  assert.match(D.situationalRollHints('skill', 'Insight')[0].condition, /criminals/);
+  assert.deepEqual(D.situationalRollHints('skill', 'Athletics'), []);
   assert.ok(D.proficiencyLists().weapons.includes('Dagger'));
   assert.equal(D.hpMax(), T.hpMax(1, D.mod('CON')) + 2);
 
@@ -567,6 +569,22 @@ test('firearm attacks spend carried bullets individually and update their weight
   assert.equal(D.itemStackWeight(rounds), 1.8);
 });
 
+test('all ammunition weapons expose their ammo type and can spend it on attack', () => {
+  const byName = name => Catalog.CURATED_FALLBACK.find(item => item.name === name);
+  fresh(state => {
+    const bow = Catalog.cloneForInventory(byName('Shortbow'));
+    const arrows = Catalog.cloneForInventory(byName('Arrows (20)'));
+    bow.id = 'ammo-shortbow'; bow.location = 'equipped';
+    arrows.id = 'test-arrows'; arrows.location = 'carried';
+    state.character.gear.inventory.push(bow, arrows);
+  });
+  const attack = D.weaponAttacks().find(item => item.id === 'ammo-shortbow');
+  assert.match(attack.ammunitionType, /arrow/i);
+  assert.equal(D.ammunitionSummaryForWeapon(attack).total, 20);
+  assert.equal(C.executeAction({ name: 'Shortbow', weaponId: attack.id, spendAmmo: true }).ok, true);
+  assert.equal(D.ammunitionCount(D.inventory().find(item => item.id === 'test-arrows')), 19);
+});
+
 test('smart action use spends Cool, feature use and ammunition as one undoable change', () => {
   const byName = name => [...Catalog.CURATED_FALLBACK, ...Catalog.HOME_BREW_ITEMS].find(item => item.name === name);
   fresh(state => {
@@ -607,6 +625,15 @@ test('level-up only advances one level, preserves damage and is undoable', () =>
   S.undo();
   assert.equal(D.level(), 4);
   assert.equal(D.hpMax(), beforeMax);
+});
+
+test('guided level-up saves its required choices atomically', () => {
+  fresh(state => { state.character.level = 2; });
+  assert.equal(C.levelUp(3, { subclass: 'Occult Collector' }).ok, true);
+  assert.equal(D.subclassName(), 'Occult Collector');
+  S.undo();
+  assert.equal(D.level(), 2);
+  assert.equal(D.subclassName(), '');
 });
 
 test('origin library exposes sourced traits while senses remain derived', () => {
@@ -671,7 +698,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.7\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.8\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -719,6 +746,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-14/);
-  assert.match(worker, /app-v9\.js\?v=9\.7\.0/);
+  assert.match(worker, /character-sheet-v9-ux-15/);
+  assert.match(worker, /app-v9\.js\?v=9\.8\.0/);
 });
