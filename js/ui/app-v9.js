@@ -134,7 +134,7 @@
   }
 
   function pageIntro(label, description) { return `<div class="page-intro"><span>${esc(label)}</span><small>${esc(description)}</small></div>`; }
-  function section(title, body, aside = '') { return `<section class="section"><div class="section-head"><h2>${esc(title)}</h2>${aside}</div>${body}</section>`; }
+  function section(title, body, aside = '', classes = '') { return `<section class="section ${esc(classes)}"><div class="section-head"><h2>${esc(title)}</h2>${aside}</div>${body}</section>`; }
   function stat(label, value, classes = '', attributes = '') { return `<div class="stat ${classes}" ${attributes}><span>${esc(label)}</span><b>${esc(value)}</b></div>`; }
   function statDetail(label, value, detail, classes = '') { return `<button type="button" class="stat ${classes}" data-stat-detail="${esc(detail)}"><span>${esc(label)}</span><b>${esc(value)}</b></button>`; }
   function rollIndicator(result) {
@@ -237,7 +237,7 @@
     const hasRelics = D.subclassHasSystem('relics', source);
     const luck = background.feat === 'Lucky' ? (() => {
       const max = D.pb(source), left = Math.max(0, max - (Number(background.luckUsed) || 0));
-      return section('Lucky', `<p class="muted">${esc(feat.description)}</p><div class="cool-dots">${Array.from({ length: max }, (_, i) => `<button type="button" class="cool-dot ${i < left ? 'filled' : ''}" data-luck-adjust="${i < left ? 1 : -1}"></button>`).join('')}</div>`, `<span class="eyebrow">${left}/${max}</span>`);
+      return section('Lucky', `<p class="muted">${esc(feat.description)}</p><div class="cool-dots">${Array.from({ length: max }, (_, i) => `<button type="button" class="cool-dot ${i < left ? 'filled' : ''}" data-luck-adjust="${i < left ? 1 : -1}"></button>`).join('')}</div>`, `<span class="eyebrow">${left}/${max}</span>`, 'luck-section');
     })() : '';
 
     $('#characterPage').innerHTML = `${pageIntro('CHARACTER', 'Combat overview and canonical stats')}
@@ -252,12 +252,12 @@
       </div><div class="stat-grid combat-secondary">
         <button type="button" class="stat" data-stat-detail="initiative"><span>INIT</span><span class="stat-value-row"><b>${S.signed(D.initiative(source))}</b>${rollIndicator(initMode)}</span></button>
         ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('LOAD', `${weightNumber(load.weight)}/${weightNumber(load.limit)} lb`, 'encumbrance', `compact load-stat ${load.status !== 'normal' ? 'load-alert' : ''}`)}${statDetail('PUSH / DRAG', `${weightNumber(load.pushDragLift)} lb`, 'encumbrance', `compact load-stat ${load.status === 'over' ? 'load-alert' : ''}`)}${hasRelics ? statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact') : ''}${stat('PB', S.signed(D.pb(source)), 'compact')}
-      </div>${senses.length ? `<div class="character-senses"><b>SENSES</b>${senses.map(sense => `<span class="chip">${esc(sense)}</span>`).join('')}</div>` : ''}<div class="hero-actions rest-actions"><button class="small-btn" type="button" data-rest="short">Short Rest</button><button class="small-btn" type="button" data-rest="long">Long Rest</button><button class="small-btn ${c.inspiration ? 'primary' : ''}" type="button" data-inspiration>Inspiration</button></div>`)}
-      ${section('Cool Points', `<div class="resource-row cool-resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><b>${coolLeft}/${coolTotal}</b></div>`)}
+      </div>${senses.length ? `<div class="character-senses"><b>SENSES</b>${senses.map(sense => `<span class="chip">${esc(sense)}</span>`).join('')}</div>` : ''}<div class="hero-actions rest-actions"><button class="small-btn" type="button" data-rest="short">Short Rest</button><button class="small-btn" type="button" data-rest="long">Long Rest</button><button class="small-btn ${c.inspiration ? 'primary' : ''}" type="button" data-inspiration>Inspiration</button></div>`, '', 'combat-section')}
+      ${section('Cool Points', `<div class="resource-row cool-resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><b>${coolLeft}/${coolTotal}</b></div>`, '', 'cool-section')}
       ${luck}
-      ${section('Abilities & Saves', `<div class="ability-grid">${abilityCards}</div><small class="muted top-gap">A/D is shown only when active. A forced state is locked to its condition or relic.</small>`)}
-      ${section('Conditions', `<div class="condition-strip">${conditionChips || '<span class="muted">No active conditions.</span>'}${c.exhaustion ? `<span class="chip brass">Exhaustion ${c.exhaustion}</span>` : ''}</div><div class="inline-form top-gap"><select id="conditionSelect"><option value="">Add condition…</option>${conditionOptions}</select><button type="button" class="small-btn" data-condition-add>+</button></div><div class="tiny-controls top-gap"><button type="button" data-exhaustion-adjust="-1">Exhaustion −</button><button type="button" data-exhaustion-adjust="1">Exhaustion +</button></div>`)}
-      ${section('Defenses', `${defenseRows}<div class="inline-form top-gap"><select id="defenseKind"><option value="resistance">Resistance</option><option value="immunity">Immunity</option><option value="vulnerability">Vulnerability</option><option value="conditionImmunity">Condition Immunity</option></select><select id="defenseValue">${damageOptions}</select><button type="button" class="small-btn" data-defense-add>+</button></div><template id="damageDefenseOptions">${damageOptions}</template><template id="conditionDefenseOptions">${conditionImmunityOptions}</template>`)}
+      ${section('Abilities & Saves', `<div class="ability-grid">${abilityCards}</div><small class="muted top-gap">A/D is shown only when active. A forced state is locked to its condition or relic.</small>`, '', 'abilities-section')}
+      ${section('Conditions', `<div class="condition-strip">${conditionChips || '<span class="muted">No active conditions.</span>'}${c.exhaustion ? `<span class="chip brass">Exhaustion ${c.exhaustion}</span>` : ''}</div><div class="inline-form top-gap"><select id="conditionSelect"><option value="">Add condition…</option>${conditionOptions}</select><button type="button" class="small-btn" data-condition-add>+</button></div><div class="tiny-controls top-gap"><button type="button" data-exhaustion-adjust="-1">Exhaustion −</button><button type="button" data-exhaustion-adjust="1">Exhaustion +</button></div>`, '', 'conditions-section')}
+      ${section('Defenses', `${defenseRows}<div class="inline-form top-gap"><select id="defenseKind"><option value="resistance">Resistance</option><option value="immunity">Immunity</option><option value="vulnerability">Vulnerability</option><option value="conditionImmunity">Condition Immunity</option></select><select id="defenseValue">${damageOptions}</select><button type="button" class="small-btn" data-defense-add>+</button></div><template id="damageDefenseOptions">${damageOptions}</template><template id="conditionDefenseOptions">${conditionImmunityOptions}</template>`, '', 'defenses-section')}
     `;
   }
 
@@ -422,7 +422,7 @@
       if (!groupRecords.length && (key !== 'custom' || selectedFilter !== 'all')) continue;
       body += `<section class="action-group"><h3>${esc(label)}</h3><div class="list">${groupRecords.length ? renderActionTree(groupRecords) : '<div class="empty">No custom actions yet.</div>'}</div>${key === 'custom' ? '<button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button>' : ''}</section>`;
     }
-    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span><button type="button" class="tactics-open" data-tactics-open aria-label="Next Move tactical suggestions" title="Next Move"><span>✦</span></button></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
+    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span><button type="button" class="tactics-open" data-tactics-open aria-label="Next Move tactical suggestions" title="Next Move"><span>✦</span></button></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div><div class="action-groups">${body || '<div class="empty">No actions match this filter.</div>'}</div>`;
   }
 
   function renderSkills() {
@@ -435,7 +435,7 @@
     }).join('');
     const entries = D.proficiencyEntries(source);
     const details = (label, values) => `<details class="proficiency"><summary>${esc(label)} <small>${values.length}</small></summary><div class="prof-body source-list">${values.map(entry => `<span class="source-entry"><span>${esc(entry.name)}</span>${entry.description ? `<p>${nl(entry.description)}</p>` : ''}<small>${esc(entry.sources.join(' · ') || 'Manual')}</small></span>`).join('') || '<span class="muted">—</span>'}</div></details>`;
-    $('#skillsPage').innerHTML = `${pageIntro('SKILLS', 'Rolls, training and grant sources')}${section('Skills', rows)}${section('Proficiencies & Masteries', `${details('Armor', entries.armor)}${details('Weapons', entries.weapons)}${details('Masteries', entries.masteries)}${details('Tools', entries.tools)}${details('Vehicles', entries.vehicles)}${details('Languages', entries.languages)}${details('Senses', entries.senses)}<button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`)}`;
+    $('#skillsPage').innerHTML = `${pageIntro('SKILLS', 'Rolls, training and grant sources')}${section('Skills', rows, '', 'skills-list-section')}${section('Proficiencies & Masteries', `${details('Armor', entries.armor)}${details('Weapons', entries.weapons)}${details('Masteries', entries.masteries)}${details('Tools', entries.tools)}${details('Vehicles', entries.vehicles)}${details('Languages', entries.languages)}${details('Senses', entries.senses)}<button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`, '', 'proficiencies-section')}`;
   }
 
   function choiceOptions(definition, selected, source, allSelections = [], index = 0) {
@@ -526,9 +526,9 @@
     const filters = [['all', 'ALL'], ['active', 'ACTIVE'], ['passive', 'PASSIVE'], ['subclass', 'SUBCLASS']].map(([key, label]) => `<button type="button" class="filter-btn ${source.ui.featureFilter === key ? 'active' : ''}" data-feature-filter="${key}">${label}</button>`).join('');
     $('#featuresPage').innerHTML = `${pageIntro('FEATURES', progression ? 'Complete level 1–20 progression' : `Available through level ${D.level(source)}`)}
       ${missing.length ? `<div class="choice-warning"><b>Required choices missing</b><span>${esc(missing.join(' • '))}</span><small>Open the highlighted feature below, or use Builder for setup choices.</small><button type="button" class="small-btn" data-open-builder>Open Builder choices</button></div>` : ''}
-      ${section('Library', `<input id="featureSearch" class="search-inline" value="${esc(local.featureSearch)}" placeholder="Search features…"><div class="filters top-gap">${filters}</div><div class="view-switch top-gap"><button type="button" class="filter-btn ${!progression ? 'active' : ''}" data-feature-view="available">AVAILABLE</button><button type="button" class="filter-btn ${progression ? 'active' : ''}" data-feature-view="progression">PROGRESSION 1–20</button></div>`)}
-      ${originFeatures.length ? section('Origin Features', `<div class="list origin-feature-list">${originFeatures.map(feature => featureCard(feature)).join('')}</div>`) : ''}
-      ${section('Features', `<div class="list feature-tree">${features.length ? renderFeatureTree(features) : '<div class="empty">Nothing found.</div>'}</div>`, `<span class="eyebrow">LEVEL ${D.level(source)}</span>`)}`;
+      ${section('Library', `<input id="featureSearch" class="search-inline" value="${esc(local.featureSearch)}" placeholder="Search features…"><div class="filters top-gap">${filters}</div><div class="view-switch top-gap"><button type="button" class="filter-btn ${!progression ? 'active' : ''}" data-feature-view="available">AVAILABLE</button><button type="button" class="filter-btn ${progression ? 'active' : ''}" data-feature-view="progression">PROGRESSION 1–20</button></div>`, '', 'feature-library')}
+      ${originFeatures.length ? section('Origin Features', `<div class="list origin-feature-list">${originFeatures.map(feature => featureCard(feature)).join('')}</div>`, '', 'origin-features-section') : ''}
+      ${section('Features', `<div class="list feature-tree">${features.length ? renderFeatureTree(features) : '<div class="empty">Nothing found.</div>'}</div>`, `<span class="eyebrow">LEVEL ${D.level(source)}</span>`, 'features-list-section')}`;
   }
 
   function renderRelics() {
@@ -559,8 +559,8 @@
     const available = Relics.filter(relic => relic.level <= level && !entries.some(item => item.definition.id === relic.id)).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
     const options = available.map(relic => `<option value="${esc(relic.id)}">${esc(relic.name)} • level ${relic.level}</option>`).join('');
     $('#relicsPage').innerHTML = `${pageIntro('RELICS', subclass ? `${subclass} collection and shared charges` : 'Subclass collection unlocks at level 3')}
-      ${section('Capacity', `<div class="stat-grid">${stat('PREP', `${prepared}/${limits[0]}`, 'compact')}${stat('RESERVE', `${reserve}/${limits[1]}`, 'compact')}${stat('TOTAL', `${entries.length}/${limits[2]}`, 'compact')}${stat('RELIC DC', D.relicDC(source), 'compact')}</div>`)}
-      ${section('Collection', `<div class="inline-form"><select id="relicSelect" ${entries.length >= limits[2] ? 'disabled' : ''}><option value="">Add relic…</option>${options}</select><button type="button" class="small-btn" data-relic-add ${entries.length >= limits[2] ? 'disabled' : ''}>+</button></div><div class="relic-grid top-gap">${cards}</div>`)}
+      ${section('Capacity', `<div class="stat-grid">${stat('PREP', `${prepared}/${limits[0]}`, 'compact')}${stat('RESERVE', `${reserve}/${limits[1]}`, 'compact')}${stat('TOTAL', `${entries.length}/${limits[2]}`, 'compact')}${stat('RELIC DC', D.relicDC(source), 'compact')}</div>`, '', 'relic-capacity-section')}
+      ${section('Collection', `<div class="inline-form"><select id="relicSelect" ${entries.length >= limits[2] ? 'disabled' : ''}><option value="">Add relic…</option>${options}</select><button type="button" class="small-btn" data-relic-add ${entries.length >= limits[2] ? 'disabled' : ''}>+</button></div><div class="relic-grid top-gap">${cards}</div>`, '', 'relic-collection-section')}
     `;
   }
 
@@ -707,8 +707,8 @@
     const gearTools = `<div class="gear-utility-bar"><button type="button" class="inventory-check ${issues.length ? 'has-issues' : ''}" data-inventory-issues><span>!</span><b>${issues.length ? `${issues.length} TO FIX` : 'CHECKED'}</b></button><details class="loadout-tools"><summary>LOADOUTS · ${loadouts.length}</summary><div><input id="loadoutName" placeholder="New loadout name" maxlength="32"><button type="button" class="small-btn" data-loadout-save>SAVE CURRENT</button>${loadouts.length ? `<select id="loadoutSelect">${loadoutOptions}</select><button type="button" class="small-btn primary" data-loadout-apply>APPLY</button><button type="button" class="small-btn danger" data-loadout-delete>DELETE</button>` : ''}</div></details></div>`;
     $('#gearPage').innerHTML = `${pageIntro('GEAR', 'Equipment, locations, containers and money')}
       <button type="button" class="load-strip ${load.status !== 'normal' ? 'load-alert' : ''}" data-stat-detail="encumbrance"><span><small>LOAD · ${esc(modeLabel)}</small><b>${weightNumber(load.weight)}/${weightNumber(load.limit)} lb</b></span><em>${esc(load.statusLabel)}</em><i>›</i></button>
-      ${section('Money', `<button type="button" class="money-wallet" data-money-open><span class="money-wallet-label"><small>${esc(moneyCaption)}</small><b>${money.mode === 'favorite' ? esc(money.favorite.region) : `★ ${esc(money.favorite.name)}`}</b></span><span class="money-coins">${wallet}</span><i class="money-open-hint">Manage ›</i></button>`)}
-      ${section('Inventory', `${gearTools}<div class="detail-actions top-gap"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><label class="other-possessions"><span>OTHER POSSESSIONS</span><textarea id="otherPossessions" rows="4" placeholder="Property, documents, vehicles, safe-deposit contents…">${esc(source.character.gear.otherPossessions || '')}</textarea><small>Text-only possessions do not add carried weight.</small></label><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
+      ${section('Money', `<button type="button" class="money-wallet" data-money-open><span class="money-wallet-label"><small>${esc(moneyCaption)}</small><b>${money.mode === 'favorite' ? esc(money.favorite.region) : `★ ${esc(money.favorite.name)}`}</b></span><span class="money-coins">${wallet}</span><i class="money-open-hint">Manage ›</i></button>`, '', 'money-section')}
+      ${section('Inventory', `${gearTools}<div class="detail-actions top-gap"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><label class="other-possessions"><span>OTHER POSSESSIONS</span><textarea id="otherPossessions" rows="4" placeholder="Property, documents, vehicles, safe-deposit contents…">${esc(source.character.gear.otherPossessions || '')}</textarea><small>Text-only possessions do not add carried weight.</small></label><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`, '', 'inventory-section')}
     `;
   }
 
@@ -843,7 +843,7 @@
     if (save && state().ui.pageId !== pageId) C.setUi('pageId', pageId);
   }
   function initDots() {
-    $('#pageDots').innerHTML = visiblePages().map(page => `<button type="button" class="page-dot" data-page-dot="${page.id}" aria-label="${page.title}"></button>`).join('');
+    $('#pageDots').innerHTML = visiblePages().map(page => `<button type="button" class="page-dot" data-page-dot="${page.id}" aria-label="${page.title}"><span>${page.title}</span></button>`).join('');
   }
   function onPagerScroll() {
     if (local.scrollRaf) return;

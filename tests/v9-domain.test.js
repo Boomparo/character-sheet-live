@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.9.1-tactical-fit');
+assert.equal(S.APP_VERSION, '9.10.0-desktop');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -774,7 +774,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.9\.1/);
+  assert.match(index, /service-worker\.js\?v=9\.10\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -821,7 +821,10 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.money-total/);
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
+  assert.match(v9Css, /@media\(min-width:1000px\)/, 'desktop workspace has a dedicated breakpoint');
+  assert.match(v9Css, /grid-template-columns:218px minmax\(0,1fr\)/, 'desktop uses a persistent navigation rail');
+  assert.match(app, /class="page-dot"[^>]+><span>\$\{page\.title\}<\/span>/, 'desktop navigation exposes readable page labels');
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-17/);
-  assert.match(worker, /app-v9\.js\?v=9\.9\.1/);
+  assert.match(worker, /character-sheet-v9-ux-18/);
+  assert.match(worker, /app-v9\.js\?v=9\.10\.0/);
 });
