@@ -4,8 +4,8 @@
   const GearRules = window.GearRulesV9;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 17;
-  const APP_VERSION = '9.8.0-quick-play';
+  const SCHEMA_VERSION = 18;
+  const APP_VERSION = '9.9.0-session-tools';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -56,7 +56,7 @@
           money: { gp: 0, ep: 0, sp: 0, cp: 0, pp: 0 },
           currencyWallets: { generic: { g: 0, s: 0, c: 0 } },
           favoriteCurrencyId: 'generic', currencyDisplayMode: 'total', otherPossessions: '', currencyTransactions: [],
-          weapons: [], armor: [], inventory: [],
+          weapons: [], armor: [], inventory: [], loadouts: [],
           encumbranceMode: 'basic',
           starting: { budgetGp: 0, finalized: false, remainderCp: 0, legacy: false }
         },
@@ -88,7 +88,7 @@
       campaign: { npcs: [], journal: [], notes: [], tarot: {} },
       ui: {
         page: 0, pageId: 'characterPage', socialTab: 'npcs', featureView: 'available', featureFilter: 'all', actionFilter: 'all',
-        npcSort: 'alphabetical', campaignView: 'directory',
+        npcSort: 'alphabetical', campaignView: 'directory', tactics: { range: 'near', enemies: 'single', goal: 'damage' },
         favoriteFeatures: [], favoriteActions: [], openFeatures: [], openActions: [], openRelics: [], openItems: []
       }
     };
@@ -124,7 +124,9 @@
       delete item.uid;
       item.name = String(item.name || 'Item');
       item.location = [...ITEM_LOCATIONS, 'backpack'].includes(item.location) ? item.location : (item.equipped || item.isEquipped ? 'equipped' : item.worn || item.isWorn ? 'worn' : 'carried');
-      item.quantity = Math.max(1, Math.floor(number(item.quantity, 1)));
+      const consumableName = /\b(potion|ration|torch|flask of oil|antitoxin|holy water|acid vial)\b/i.test(item.name);
+      item.isConsumable = !((item.tags || []).includes('ammunition')) && (item.isConsumable === true || (item.tags || []).includes('consumable') || consumableName);
+      item.quantity = Math.max(item.isConsumable ? 0 : 1, Math.floor(number(item.quantity, 1)));
       const weight = item.weight ?? item.raw?.weight;
       if (weight != null && weight !== '' && Number.isFinite(Number(weight))) item.weight = Math.max(0, number(weight));
       else delete item.weight;
@@ -135,6 +137,11 @@
       const inferredType = item.isContainer ? 'container' : item.raw?.weapon_category || item.raw?.damage?.damage_dice ? 'weapon' : rawArmor === 'shield' ? 'shield' : rawArmor ? 'armor' : 'item';
       item.itemType = ['item', 'weapon', 'armor', 'shield', 'container'].includes(item.itemType) ? item.itemType : inferredType;
       if (item.itemType === 'container') item.isContainer = true;
+      if (item.isContainer) {
+        const capacityMatch = String(item.capacity || '').match(/([\d.]+)\s*lb\.?/i);
+        if (item.capacityWeight != null && item.capacityWeight !== '') item.capacityWeight = Math.max(0, number(item.capacityWeight));
+        else if (capacityMatch) item.capacityWeight = Math.max(0, number(capacityMatch[1]));
+      } else delete item.capacityWeight;
       const ammunition = item.itemType !== 'weapon' && ((item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`));
       if (ammunition) {
         const hadBundleSize = item.bundleSize != null && item.bundleSize !== '';
@@ -253,6 +260,10 @@
     c.gear.armor = normalizeItems(c.gear.armor, 'armor', gearIds);
     migrateLegacyBackpack(c);
     const allGear = [...c.gear.inventory, ...c.gear.weapons, ...c.gear.armor];
+    c.gear.loadouts = array(c.gear.loadouts).filter(entry => entry && typeof entry === 'object').map((entry, index) => ({
+      id: String(entry.id || `loadout-${index + 1}`), name: String(entry.name || `Loadout ${index + 1}`),
+      items: entry.items && typeof entry.items === 'object' && !Array.isArray(entry.items) ? entry.items : {}
+    })).slice(0, 8);
     if (sourceSchema < 14) {
       for (const item of allGear) {
         const ammunition = (item.tags || []).includes('ammunition') || /ammunition/i.test(`${item.category || ''} ${item.raw?.equipment_category?.name || ''}`);
@@ -274,6 +285,12 @@
       }
       if (cursor?.containerId && visited.has(cursor.containerId)) item.containerId = '';
     }
+    const tactics = s.ui.tactics && typeof s.ui.tactics === 'object' ? s.ui.tactics : {};
+    s.ui.tactics = {
+      range: ['engaged', 'near', 'far'].includes(tactics.range) ? tactics.range : 'near',
+      enemies: ['single', 'group'].includes(tactics.enemies) ? tactics.enemies : 'single',
+      goal: ['damage', 'control', 'defence', 'escape'].includes(tactics.goal) ? tactics.goal : 'damage'
+    };
     const currencyIds = new Set((GearRules?.WORLD_CURRENCIES || [{ id: 'generic' }]).map(currency => currency.id));
     const wallets = {};
     for (const [id, wallet] of Object.entries(c.gear.currencyWallets || {})) {

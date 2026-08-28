@@ -117,6 +117,102 @@
     return { total: Math.round(total * 100) / 100, unknown };
   }
 
+  function isConsumable(item) {
+    return !!item?.isConsumable && !isAmmunitionItem(item);
+  }
+
+  function containerLoad(containerId, value) {
+    const source = state(value);
+    const items = inventory(source);
+    const byId = new Map(items.map(item => [item.id, item]));
+    const container = byId.get(containerId);
+    if (!container?.isContainer) return null;
+    let total = 0, unknown = 0, count = 0;
+    for (const item of items) {
+      if (item.id === containerId) continue;
+      const visited = new Set([item.id]);
+      let parentId = item.containerId;
+      let inside = false;
+      while (parentId && !visited.has(parentId)) {
+        if (parentId === containerId) { inside = true; break; }
+        visited.add(parentId);
+        parentId = byId.get(parentId)?.containerId || '';
+      }
+      if (!inside) continue;
+      count += 1;
+      const weight = itemStackWeight(item);
+      if (weight == null) unknown += 1; else total += weight;
+    }
+    const capacity = container.capacityWeight == null || container.capacityWeight === '' ? null : Math.max(0, number(container.capacityWeight));
+    return { container, count, weight: Math.round(total * 100) / 100, unknown, capacity, over: capacity != null && total > capacity };
+  }
+
+  function inventoryIssues(value) {
+    const source = state(value);
+    const issues = [];
+    for (const item of inventory(source)) {
+      if (itemStackWeight(item) == null) issues.push({ kind: 'item', itemId: item.id, code: 'weight', label: item.name, detail: 'Missing weight' });
+      if (isWeapon(item)) {
+        const damage = item.damage || item.raw?.damage?.damage_dice;
+        if (!damage || damage === '—') issues.push({ kind: 'item', itemId: item.id, code: 'damage', label: item.name, detail: 'Missing damage dice' });
+        const hasAmmoProperty = weaponProperties(item).some(property => /^Ammunition/i.test(property));
+        if (hasAmmoProperty && !weaponAmmunitionType(item)) issues.push({ kind: 'item', itemId: item.id, code: 'ammunition', label: item.name, detail: 'Missing ammunition type' });
+      }
+      if (isItemEquipped(item) && item.attunement && !item.isAttuned) issues.push({ kind: 'item', itemId: item.id, code: 'attunement', label: item.name, detail: 'Equipped but not attuned' });
+      if (item.isContainer && item.capacityWeight == null && !item.capacity) issues.push({ kind: 'item', itemId: item.id, code: 'capacity', label: item.name, detail: 'Missing container capacity' });
+    }
+    for (const detail of choiceRequirements(source)) issues.push({ kind: 'builder', code: 'choice', label: 'Character choice', detail });
+    return issues;
+  }
+
+  function tacticalRecommendations(records, context = {}, value) {
+    const source = state(value);
+    const range = ['engaged', 'near', 'far'].includes(context.range) ? context.range : 'near';
+    const enemies = context.enemies === 'group' ? 'group' : 'single';
+    const goal = ['damage', 'control', 'defence', 'escape'].includes(context.goal) ? context.goal : 'damage';
+    const coolLeft = Math.max(0, T.coolTotal(level(source)) - number(source.classes.treasureHunter.coolUsed));
+    const hpRatio = hp(source).max ? hp(source).current / hp(source).max : 1;
+    const parentIds = new Set((records || []).map(record => record.parentId).filter(Boolean));
+    const scored = [];
+    for (const record of records || []) {
+      if (!record || record.action === 'Reaction' || (parentIds.has(record.id) && !record.isAttack && !record.damage)) continue;
+      if (number(record.cost) > coolLeft || (record.ammunition && record.ammunition.total <= 0)) continue;
+      if (record.resource?.max && number(record.resource.used) >= number(record.resource.max)) continue;
+      if (record.uses) {
+        const used = number(source.classes.treasureHunter.featureUses?.[record.featureId]);
+        if (used >= number(record.uses)) continue;
+      }
+      const text = `${record.name || ''} ${record.summary || ''}`.toLowerCase();
+      const tags = {
+        damage: !!record.isAttack || !!record.damage,
+        control: /prone|push|slow|grapple|restrain|stun|shove|trip|disarm|control|knock/.test(text),
+        defence: /dodge|defen|resistance|temporary hit|heal|protect/.test(text),
+        escape: /disengage|dash|escape|hide|movement|speed/.test(text),
+        group: /line|cone|radius|each creature|all creatures|multiple|group|area/.test(text),
+        ranged: /range\s*:\s*(?!5\s*ft)/.test(text) || /ranged|firearm|bow|crossbow/.test(text),
+        melee: /range\s*:\s*5\s*ft/.test(text) || /melee/.test(text)
+      };
+      let score = record.group === 'core' ? 1 : 3;
+      const reasons = [];
+      if (tags[goal]) { score += 6; reasons.push({ damage: 'Direct damage option', control: 'Matches the control goal', defence: 'Improves survival', escape: 'Helps reposition or escape' }[goal]); }
+      if (enemies === 'group' && tags.group) { score += 5; reasons.push('Useful against a group'); }
+      if (enemies === 'single' && tags.damage && !tags.group) { score += 2; reasons.push('Focused on one target'); }
+      if (range === 'engaged') {
+        if (tags.melee) { score += 4; reasons.push('Fits melee range'); }
+        if (tags.ranged && !tags.melee) score -= 4;
+      } else if (range === 'far') {
+        if (tags.ranged) { score += 4; reasons.push('Reaches a distant target'); }
+        if (tags.melee && !tags.ranged) score -= 6;
+      }
+      if (hpRatio <= 0.35 && (tags.defence || tags.escape)) { score += 5; reasons.push('Your HP is low'); }
+      if (record.cost && coolLeft <= 1) { score -= 2; reasons.push('Uses your last Cool Point'); }
+      else if (record.cost) reasons.push(`Costs ${record.cost} Cool`);
+      if (record.ammunition) reasons.push(`${record.ammunition.total} ${record.ammunition.type || 'ammo'} remaining`);
+      if (score > 0) scored.push({ record, score, reasons: reasons.slice(0, 3) });
+    }
+    return scored.sort((a, b) => b.score - a.score || Number(b.record.isAttack) - Number(a.record.isAttack) || String(a.record.name).localeCompare(String(b.record.name))).slice(0, 3);
+  }
+
   function walletCp(wallet) {
     return Math.max(0, Math.floor(number(wallet?.g))) * 100 +
       Math.max(0, Math.floor(number(wallet?.s))) * 10 +
@@ -827,6 +923,7 @@
   window.CharacterDerived = {
     SKILLS, ARMOR, state, level, pb, subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
     ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
+    isConsumable, containerLoad, inventoryIssues, tacticalRecommendations,
     walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,
     weaponAmmunitionType, isAmmunitionItem, ammunitionCount, ammunitionEntriesForWeapon, ammunitionSummaryForWeapon,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,

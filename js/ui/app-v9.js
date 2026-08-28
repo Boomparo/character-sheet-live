@@ -291,7 +291,7 @@
         hit: S.signed(weapon.hit), damage: weapon.damage, headerDamage: weapon.headerDamage, damageType: weapon.damageType, mastery: weapon.mastery,
         masteryDescription: weapon.masteryDescription, masterySources: weapon.masterySources,
         effects: weapon.effects || [], attackBreakdown: weapon.attackBreakdown || [], ability: weapon.ability, isAttack: true,
-        ammunition
+        ammunition, rangeText: weapon.rangeText, propertiesText: weapon.propertiesText
       });
     });
     records.push(...D.itemActions(source));
@@ -381,6 +381,20 @@
     return records.filter(record => included.has(record.id));
   }
 
+  function renderTacticsDialog() {
+    const source = state();
+    const context = source.ui.tactics || { range: 'near', enemies: 'single', goal: 'damage' };
+    const recommendations = D.tacticalRecommendations(allActionRecords(), context, source);
+    const options = (values, selected) => values.map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`).join('');
+    $('#tacticsBody').innerHTML = `<div class="tactics-context">
+      <label>Distance<select data-tactics-field="range">${options([['engaged', 'Engaged'], ['near', 'Near'], ['far', 'Far']], context.range)}</select></label>
+      <label>Enemies<select data-tactics-field="enemies">${options([['single', 'One target'], ['group', 'Group']], context.enemies)}</select></label>
+      <label>Goal<select data-tactics-field="goal">${options([['damage', 'Damage'], ['control', 'Control'], ['defence', 'Defence'], ['escape', 'Escape']], context.goal)}</select></label>
+    </div><div class="tactics-results">${recommendations.map((entry, index) => `<button type="button" class="tactic-result" data-tactic-action="${esc(entry.record.id)}"><i>${index + 1}</i><span><b>${esc(entry.record.name)}</b><small>${esc(entry.reasons.join(' · ') || 'Available option')}</small></span><em>${esc(actionCode(entry.record.action))}</em></button>`).join('') || '<div class="empty">No usable action matches this situation.</div>'}</div><p class="tactics-note">Suggestions use your current HP, Conditions, Cool, ammunition and available actions. They are guidance, not an automatic rules decision.</p>`;
+  }
+
+  function openTactics() { renderTacticsDialog(); showDialog('#tacticsDialog'); }
+
   function renderActions() {
     const source = state();
     const allRecords = allActionRecords();
@@ -408,7 +422,7 @@
       if (!groupRecords.length && (key !== 'custom' || selectedFilter !== 'all')) continue;
       body += `<section class="action-group"><h3>${esc(label)}</h3><div class="list">${groupRecords.length ? renderActionTree(groupRecords) : '<div class="empty">No custom actions yet.</div>'}</div>${key === 'custom' ? '<button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button>' : ''}</section>`;
     }
-    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
+    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><button type="button" class="tactics-open" data-tactics-open><span>✦</span><b>NEXT MOVE</b><small>Situation-based suggestions</small></button><div class="action-filter-bar" aria-label="Filter actions">${filters}</div>${body || '<div class="empty">No actions match this filter.</div>'}`;
   }
 
   function renderSkills() {
@@ -607,6 +621,8 @@
     const effectiveLocation = effectiveItemLocation(item, context);
     const stackWeight = D.itemStackWeight(item);
     const ammunitionCount = D.ammunitionCount(item);
+    const containerLoad = item.isContainer ? D.containerLoad(item.id, source) : null;
+    const consumable = D.isConsumable(item);
     const keyStats = D.itemKeyStats(item);
     const locationText = parent ? `In ${parent.name} · ${LOCATION_LABELS[effectiveLocation] || effectiveLocation}` : LOCATION_LABELS[effectiveLocation] || effectiveLocation;
     const fields = Catalog ? Catalog.displayFields(item).map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>`).join('') : '';
@@ -627,10 +643,12 @@
     const activationNote = equipped && item.attunement && !item.isAttuned ? '<div class="item-activation-warning">Equipped, but its stats and actions stay inactive until attuned.</div>' : '';
     const weightNote = item.weightEstimated && item.weightNote ? `<div class="item-estimate-note"><b>Estimated weight</b><span>${esc(item.weightNote)} Edit it if this version of the item differs.</span></div>` : '';
     const equipButton = !item.isContainer ? `<button type="button" class="small-btn item-equip ${equipped ? 'primary' : ''}" data-item-equip="${esc(item.id)}">${equipped ? 'Unequip' : 'Equip'}</button>` : '';
+    const useButton = consumable ? `<button type="button" class="small-btn consumable-use ${item.quantity > 0 ? 'primary' : ''}" data-consumable-use="${esc(item.id)}" ${item.quantity > 0 ? '' : 'disabled'}>USE · ${Math.max(0, Number(item.quantity) || 0)}</button>` : '';
+    const capacity = containerLoad ? `<div class="container-capacity ${containerLoad.over ? 'over' : ''}"><span><b>CONTENTS</b><small>${weightLabel(containerLoad.weight)}${containerLoad.unknown ? ` + ${containerLoad.unknown} unknown` : ''}</small></span>${containerLoad.capacity != null ? `<span><b>CAPACITY</b><small>${weightLabel(containerLoad.capacity)}</small></span><i style="--fill:${Math.min(100, containerLoad.capacity ? containerLoad.weight / containerLoad.capacity * 100 : 0)}%"></i>` : `<span><b>CAPACITY</b><small>${esc(item.capacity || 'Not set')}</small></span>`}</div>` : '';
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
     return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}" data-search-anchor="item:${esc(item.id)}">
-      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip">CONTAINER · ${(context.children.get(item.id) || []).length} items</span>` : ''}${ammunitionCount != null ? `<span class="ammo-count-chip">AMMO ${ammunitionCount}</span>` : item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${equipButton}</div>
-      <div class="inventory-detail">${activationNote}${weightNote}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="1" value="${item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
+      <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip ${containerLoad?.over ? 'over' : ''}">CONTAINER · ${(context.children.get(item.id) || []).length} items${containerLoad?.capacity != null ? ` · ${weightNumber(containerLoad.weight)}/${weightNumber(containerLoad.capacity)} lb` : ''}</span>` : ''}${ammunitionCount != null ? `<span class="ammo-count-chip">AMMO ${ammunitionCount}</span>` : consumable ? `<span class="consumable-chip">USES ${Math.max(0, Number(item.quantity) || 0)}</span>` : item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${useButton}${equipButton}</div>
+      <div class="inventory-detail">${activationNote}${weightNote}${capacity}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="${consumable ? 0 : 1}" value="${consumable ? Math.max(0, Number(item.quantity) || 0) : item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
   }
 
@@ -646,9 +664,17 @@
     return 'other';
   }
 
+  function renderInventoryIssuesDialog() {
+    const issues = D.inventoryIssues(state());
+    $('#inventoryIssuesList').innerHTML = issues.map(issue => `<button type="button" class="inventory-issue" ${issue.kind === 'item' ? `data-issue-item="${esc(issue.itemId)}"` : 'data-issue-builder'}><i>${issue.code === 'weight' ? '⚖' : issue.code === 'choice' ? '◆' : '!'}</i><span><b>${esc(issue.label)}</b><small>${esc(issue.detail)}</small></span><em>FIX ›</em></button>`).join('') || '<div class="empty">Inventory and character choices look complete.</div>';
+  }
+
+  function openInventoryIssues() { renderInventoryIssuesDialog(); showDialog('#inventoryIssuesDialog'); }
+
   function renderGear() {
     const source = state();
     const load = D.encumbrance(source);
+    const issues = D.inventoryIssues(source);
     const money = D.currencySummary(source);
     const displayCurrency = money.mode === 'favorite' ? money.favorite : GearRules.currency('generic');
     const wallet = ['g', 's', 'c'].map(key => moneyCoin(key, money.amounts[key], displayCurrency.denominations[key])).join('');
@@ -676,10 +702,13 @@
     const itemCards = equippedSection || locationGroups ? `${equippedSection}${locationGroups}` : '<div class="empty">Inventory is empty.</div>';
     const modeLabel = load.mode === 'variant' ? 'Variant ×5' : load.mode === 'balanced' ? 'Expedition ×10' : 'Basic ×15';
     const moneyCaption = money.mode === 'favorite' ? `Favorite balance · ${money.favorite.name}` : 'Total value across all owned currencies';
+    const loadouts = source.character.gear.loadouts || [];
+    const loadoutOptions = loadouts.map(entry => `<option value="${esc(entry.id)}">${esc(entry.name)}</option>`).join('');
+    const gearTools = `<div class="gear-utility-bar"><button type="button" class="inventory-check ${issues.length ? 'has-issues' : ''}" data-inventory-issues><span>!</span><b>${issues.length ? `${issues.length} TO FIX` : 'CHECKED'}</b></button><details class="loadout-tools"><summary>LOADOUTS · ${loadouts.length}</summary><div><input id="loadoutName" placeholder="New loadout name" maxlength="32"><button type="button" class="small-btn" data-loadout-save>SAVE CURRENT</button>${loadouts.length ? `<select id="loadoutSelect">${loadoutOptions}</select><button type="button" class="small-btn primary" data-loadout-apply>APPLY</button><button type="button" class="small-btn danger" data-loadout-delete>DELETE</button>` : ''}</div></details></div>`;
     $('#gearPage').innerHTML = `${pageIntro('GEAR', 'Equipment, locations, containers and money')}
       <button type="button" class="load-strip ${load.status !== 'normal' ? 'load-alert' : ''}" data-stat-detail="encumbrance"><span><small>LOAD · ${esc(modeLabel)}</small><b>${weightNumber(load.weight)}/${weightNumber(load.limit)} lb</b></span><em>${esc(load.statusLabel)}</em><i>›</i></button>
       ${section('Money', `<button type="button" class="money-wallet" data-money-open><span class="money-wallet-label"><small>${esc(moneyCaption)}</small><b>${money.mode === 'favorite' ? esc(money.favorite.region) : `★ ${esc(money.favorite.name)}`}</b></span><span class="money-coins">${wallet}</span><i class="money-open-hint">Manage ›</i></button>`)}
-      ${section('Inventory', `<div class="detail-actions"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><label class="other-possessions"><span>OTHER POSSESSIONS</span><textarea id="otherPossessions" rows="4" placeholder="Property, documents, vehicles, safe-deposit contents…">${esc(source.character.gear.otherPossessions || '')}</textarea><small>Text-only possessions do not add carried weight.</small></label><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
+      ${section('Inventory', `${gearTools}<div class="detail-actions top-gap"><button type="button" class="small-btn primary" data-open-catalog>+ Browse items</button><button type="button" class="small-btn" data-new-item>+ Custom item</button></div><div class="gear-grid top-gap">${itemCards}</div><label class="other-possessions"><span>OTHER POSSESSIONS</span><textarea id="otherPossessions" rows="4" placeholder="Property, documents, vehicles, safe-deposit contents…">${esc(source.character.gear.otherPossessions || '')}</textarea><small>Text-only possessions do not add carried weight.</small></label><div class="catalog-attribution">${esc(Catalog?.attribution || '')}</div>`)}
     `;
   }
 
@@ -841,6 +870,8 @@
     document.body.insertAdjacentHTML('beforeend', `
       <dialog id="builderDialog" class="sheet-dialog builder-dialog"><form method="dialog" id="builderForm"><div class="dialog-head"><strong>Character Builder</strong><button value="cancel" class="icon-btn">×</button></div><div class="builder-tabs"><button type="button" data-builder-tab="setup">SETUP & CHOICES</button><button type="button" data-builder-tab="levelup">LEVEL UP</button><button type="button" data-builder-tab="data">JSON DATA</button></div><div id="builderBody"></div><menu><button value="cancel" class="ghost">Close</button><button id="builderSave" type="submit" class="primary">Save Setup</button></menu></form></dialog>
       <dialog id="levelUpDialog" class="sheet-dialog level-up-dialog"><form method="dialog"><div class="dialog-head"><strong>Level Up</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="levelUpWizard"></div></form></dialog>
+      <dialog id="tacticsDialog" class="sheet-dialog tactics-dialog"><form method="dialog"><div class="dialog-head"><strong>Next Move</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="tacticsBody"></div></form></dialog>
+      <dialog id="inventoryIssuesDialog" class="sheet-dialog"><form method="dialog"><div class="dialog-head"><strong>Sheet Check</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><p class="muted">Tap a problem to open the exact editor that can fix it.</p><div id="inventoryIssuesList" class="inventory-issues-list"></div></form></dialog>
       <dialog id="bioDialog" class="sheet-dialog"><form method="dialog" id="bioForm"><div class="dialog-head"><strong>Character Bio</strong><button value="cancel" class="icon-btn">×</button></div><div id="bioFields"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save Bio</button></menu></form></dialog>
       <dialog id="moneyDialog" class="sheet-dialog money-dialog"></dialog>
       <dialog id="restDialog" class="sheet-dialog rest-dialog"><form method="dialog" id="restForm"><div class="dialog-head"><strong id="restTitle">Rest</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div id="restBody"></div><menu><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary" id="finishRest">Finish Rest</button></menu></form></dialog>
@@ -851,7 +882,8 @@
       <dialog id="historyDialog" class="sheet-dialog history-dialog"><form method="dialog"><div class="dialog-head"><strong>Recent Changes</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><p class="muted">Changes can be undone one at a time while this Sheet remains open.</p><div id="historyList" class="history-list"></div></form></dialog>
       <dialog id="journalDialog" class="sheet-dialog journal-dialog"><form method="dialog" id="journalForm"><div class="dialog-head"><strong>Campaign Journal</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><input id="journalId" type="hidden"><label>Title<input id="journalTitle" required></label><div class="form-grid two"><label>Type<select id="journalType"><option value="session">Session</option><option value="quest">Quest</option><option value="clue">Clue</option><option value="location">Location</option><option value="note">Note</option></select></label><label>Date<input id="journalDate" type="date"></label><label>Location<input id="journalLocation" placeholder="City, ruin, country…"></label><label class="check-label"><input id="journalFavorite" type="checkbox"> Favorite entry</label></div><label>Notes<textarea id="journalBody" rows="7"></textarea></label><details class="journal-links"><summary>Linked NPCs, items and relics</summary><div id="journalLinkFields"></div></details><menu><button type="button" id="journalDeleteBtn" class="danger">Delete</button><span class="menu-spacer"></span><button value="cancel" class="ghost">Cancel</button><button type="submit" class="primary">Save entry</button></menu></form></dialog>
     `);
-    $('#itemEditQuantity').closest('label').insertAdjacentHTML('afterend', '<label>Weight per item (lb.)<input id="itemEditWeight" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Unknown"></label>');
+    $('#itemEditQuantity').closest('label').insertAdjacentHTML('afterend', '<label>Weight per item (lb.)<input id="itemEditWeight" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Unknown"></label><label>Container capacity (lb.)<input id="itemEditCapacity" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Not set"></label>');
+    $('#itemEditAttuned').closest('label').insertAdjacentHTML('afterend', '<label class="check-label"><input id="itemEditConsumable" type="checkbox"> Consumable with uses</label>');
   }
 
   function centerHpWheelOn(value) {
@@ -1222,6 +1254,8 @@
     $('#itemEditEquipped').disabled = $('#itemEditContainer').checked || !!$('#itemEditStoredIn').value;
     $('#itemEditAttuned').disabled = !$('#itemEditAttunement').checked;
     $('#itemEditLocation').disabled = !!$('#itemEditStoredIn').value || $('#itemEditEquipped').checked;
+    $('#itemEditCapacity').disabled = !$('#itemEditContainer').checked;
+    $('#itemEditQuantity').min = $('#itemEditConsumable').checked ? '0' : '1';
   }
   function openItemEditor(id = '') {
     const item = id ? findGearItem(id) : null;
@@ -1233,14 +1267,16 @@
     $('#itemEditName').value = item?.name || '';
     $('#itemEditType').value = itemType(draft);
     $('#itemEditLocation').value = item?.location || 'carried';
-    $('#itemEditQuantity').value = item?.quantity || 1;
+    $('#itemEditQuantity').value = item?.quantity ?? 1;
     $('#itemEditWeight').value = item?.weight ?? item?.raw?.weight ?? '';
+    $('#itemEditCapacity').value = item?.capacityWeight ?? '';
     $('#itemEditContainer').checked = !!item?.isContainer;
     $('#itemEditStoredIn').innerHTML = itemContainerOptions(draft, context);
     $('#itemEditStoredIn').value = item?.containerId || '';
     $('#itemEditEquipped').checked = D.isItemEquipped(item);
     $('#itemEditAttunement').checked = !!item?.attunement;
     $('#itemEditAttuned').checked = !!item?.isAttuned;
+    $('#itemEditConsumable').checked = !!item?.isConsumable;
     editorValue('#itemEditPrice', item?.cost?.quantity ?? item?.raw?.cost?.quantity ?? '');
     editorValue('#itemEditCurrency', item?.cost?.unit || item?.raw?.cost?.unit || 'gp');
     editorValue('#itemEditDamage', item?.damage || item?.raw?.damage?.damage_dice || '');
@@ -1737,6 +1773,16 @@
     if (button.dataset.actionToggle) { C.toggleOpen('action', button.dataset.actionToggle); return; }
     if (button.dataset.actionFavorite) { C.toggleFavorite('action', button.dataset.actionFavorite); return; }
     if (button.dataset.actionUse) { triggerActionUse(button.dataset.actionUse); return; }
+    if (button.hasAttribute('data-tactics-open')) { openTactics(); return; }
+    if (button.dataset.tacticAction) {
+      const id = button.dataset.tacticAction;
+      closeDialog('#tacticsDialog');
+      if (state().ui.actionFilter !== 'all') C.setUi('actionFilter', 'all');
+      if (!state().ui.openActions.includes(id)) C.toggleOpen('action', id);
+      setPage('actionsPage');
+      setTimeout(() => $$('[data-search-anchor]').find(element => element.dataset.searchAnchor === `action:${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+      return;
+    }
     if (button.hasAttribute('data-new-action')) { $('#actionForm').reset(); showDialog('#actionDialog'); return; }
     if (button.dataset.customActionRemove) { if (confirm('Delete this custom action?')) C.removeCustomAction(button.dataset.customActionRemove); return; }
     if (button.dataset.featureUse) { C.toggleFeatureUse(button.dataset.featureUse, button.dataset.delta); return; }
@@ -1803,6 +1849,29 @@
       return;
     }
     if (button.hasAttribute('data-new-item')) { openItemEditor(); return; }
+    if (button.hasAttribute('data-inventory-issues')) { openInventoryIssues(); return; }
+    if (button.dataset.issueItem) { closeDialog('#inventoryIssuesDialog'); openItemEditor(button.dataset.issueItem); return; }
+    if (button.hasAttribute('data-issue-builder')) { closeDialog('#inventoryIssuesDialog'); openBuilder(); return; }
+    if (button.dataset.consumableUse) {
+      const result = C.useConsumable(button.dataset.consumableUse);
+      if (!result.ok) toast('This item has no uses left.', 'warn'); else toastUndo(`${result.name} used · ${result.remaining} left.`);
+      return;
+    }
+    if (button.hasAttribute('data-loadout-save')) {
+      const result = C.saveLoadout($('#loadoutName').value);
+      if (!result.ok) toast('Enter a loadout name.', 'warn'); else toastUndo(`${result.name} loadout saved.`);
+      return;
+    }
+    if (button.hasAttribute('data-loadout-apply')) {
+      const result = C.applyLoadout($('#loadoutSelect')?.value || '');
+      if (!result.ok) toast('Choose a saved loadout.', 'warn'); else toastUndo(`${result.name} loadout applied.`);
+      return;
+    }
+    if (button.hasAttribute('data-loadout-delete')) {
+      const id = $('#loadoutSelect')?.value || '';
+      if (id && confirm('Delete this loadout?')) C.deleteLoadout(id);
+      return;
+    }
     if (button.dataset.itemToggle) { C.toggleOpen('item', button.dataset.itemToggle); return; }
     if (button.dataset.itemEquip) {
       const item = findGearItem(button.dataset.itemEquip);
@@ -1915,6 +1984,11 @@
 
   function onChange(event) {
     const target = event.target;
+    if (target.dataset.tacticsField) {
+      C.setUi('tactics', { ...(state().ui.tactics || {}), [target.dataset.tacticsField]: target.value });
+      renderTacticsDialog();
+      return;
+    }
     if (target.dataset.levelUpChoice) {
       const key = target.dataset.levelUpChoice, index = Number(target.dataset.choiceIndex) || 0;
       if (Array.isArray(local.levelUpSelections[key])) local.levelUpSelections[key][index] = target.value;
@@ -1937,7 +2011,10 @@
         const destination = target.value ? { containerId: target.value } : { location: findGearItem(target.dataset.itemId)?.location || 'carried', containerId: '' };
         const result = C.moveItem(target.dataset.itemId, destination);
         if (!result.ok) toast('That container would create an invalid nesting.', 'warn');
-      } else C.updateItem(target.dataset.itemId, { [target.dataset.itemField]: target.type === 'checkbox' ? target.checked : target.dataset.itemField === 'quantity' ? Math.max(1, Number(target.value) || 1) : target.dataset.itemField === 'ammunitionCount' ? Math.max(0, Number(target.value) || 0) : target.value });
+      } else {
+        const current = findGearItem(target.dataset.itemId);
+        C.updateItem(target.dataset.itemId, { [target.dataset.itemField]: target.type === 'checkbox' ? target.checked : target.dataset.itemField === 'quantity' ? Math.max(current?.isConsumable ? 0 : 1, Number(target.value) || 0) : target.dataset.itemField === 'ammunitionCount' ? Math.max(0, Number(target.value) || 0) : target.value });
+      }
       return;
     }
     if (target.dataset.rollMode) { C.setRollMode(target.dataset.rollMode, target.dataset.rollKey || '', target.value); closeDialog('#statDialog'); return; }
@@ -1949,7 +2026,7 @@
     if (target.id === 'builderAbilityMode') { refreshBuilderAbilities(); return; }
     if (target.id === 'builderFeat') { refreshBuilderFeat(); return; }
     if (target.matches('[data-builder-class-skill], [data-prof-choice], [data-builder-unique], [data-builder-manual-skill]')) { syncBuilderChoices(); return; }
-    if (target.matches('#itemEditType, #itemEditStoredIn, #itemEditContainer, #itemEditAttunement')) { syncItemEditorControls(); return; }
+    if (target.matches('#itemEditType, #itemEditStoredIn, #itemEditContainer, #itemEditAttunement, #itemEditConsumable')) { syncItemEditorControls(); return; }
     if (target.id === 'itemEditEquipped') {
       if (!target.checked && ['equipped', 'worn'].includes($('#itemEditLocation').value)) $('#itemEditLocation').value = 'carried';
       if (target.checked) $('#itemEditStoredIn').value = '';
@@ -2059,6 +2136,8 @@
       const values = {
         name: $('#itemEditName').value, itemType: type, quantity: $('#itemEditQuantity').value,
         weight: $('#itemEditWeight').value === '' ? null : Math.max(0, Number($('#itemEditWeight').value) || 0),
+        capacityWeight: $('#itemEditCapacity').value === '' ? null : Math.max(0, Number($('#itemEditCapacity').value) || 0),
+        isConsumable: $('#itemEditConsumable').checked,
         weightEstimated: $('#itemEditWeight').value === '', weightNote: $('#itemEditWeight').value === '' ? '' : null,
         cost: $('#itemEditPrice').value === '' ? null : { quantity: Math.max(0, Number($('#itemEditPrice').value) || 0), unit: $('#itemEditCurrency').value },
         isContainer: type === 'container' || $('#itemEditContainer').checked,

@@ -48,7 +48,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.8.0-quick-play');
+assert.equal(S.APP_VERSION, '9.9.0-session-tools');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -62,7 +62,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 17);
+  assert.equal(state.schemaVersion, 18);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -412,6 +412,67 @@ test('Backpack is a canonical container and nested containers reject cycles', ()
   assert.equal(S.ITEM_LOCATIONS.includes('backpack'), false, 'Backpack is never a pseudo-location');
 });
 
+test('consumables spend quantity without deleting the item and remain undoable', () => {
+  fresh();
+  const id = C.addItem({ name: 'Healing Potion', isConsumable: true, quantity: 2, weight: 0.5 }, 'carried');
+  assert.equal(C.useConsumable(id).remaining, 1);
+  assert.equal(C.useConsumable(id).remaining, 0);
+  assert.equal(C.useConsumable(id).reason, 'empty');
+  assert.equal(D.inventory().find(item => item.id === id).quantity, 0, 'empty consumable remains in the inventory');
+  assert.ok(S.undo());
+  assert.equal(D.inventory().find(item => item.id === id).quantity, 1);
+});
+
+test('container capacity includes nested contents and flags overload', () => {
+  fresh(state => {
+    state.character.gear.inventory.push(
+      { id: 'capacity-bag', name: 'Backpack', itemType: 'container', isContainer: true, capacityWeight: 10, location: 'back', quantity: 1, weight: 5 },
+      { id: 'capacity-pouch', name: 'Pouch', itemType: 'container', isContainer: true, containerId: 'capacity-bag', location: 'back', quantity: 1, weight: 1 },
+      { id: 'capacity-rations', name: 'Rations', isConsumable: true, containerId: 'capacity-pouch', location: 'back', quantity: 10, weight: 1 }
+    );
+  });
+  const load = D.containerLoad('capacity-bag');
+  assert.equal(load.weight, 11, 'nested container weight and its contents count once');
+  assert.equal(load.capacity, 10);
+  assert.equal(load.over, true);
+});
+
+test('loadouts restore only item placement and preserve quantities', () => {
+  fresh(state => {
+    state.character.gear.inventory.push(
+      { id: 'loadout-bag', name: 'Backpack', itemType: 'container', isContainer: true, location: 'back', quantity: 1, weight: 5 },
+      { id: 'loadout-potion', name: 'Healing Potion', isConsumable: true, location: 'back', containerId: 'loadout-bag', quantity: 3, weight: 0.5 },
+      { id: 'loadout-blade', name: 'Rapier', itemType: 'weapon', location: 'equipped', quantity: 1, weight: 2, damage: '1d8' }
+    );
+  });
+  const saved = C.saveLoadout('Combat');
+  C.moveItem('loadout-blade', { location: 'storage', containerId: '' });
+  C.moveItem('loadout-potion', { location: 'carried', containerId: '' });
+  C.updateItem('loadout-potion', { quantity: 1 });
+  assert.equal(C.applyLoadout(saved.id).ok, true);
+  assert.equal(D.inventory().find(item => item.id === 'loadout-blade').location, 'equipped');
+  assert.equal(D.inventory().find(item => item.id === 'loadout-potion').containerId, 'loadout-bag');
+  assert.equal(D.inventory().find(item => item.id === 'loadout-potion').quantity, 1, 'loadout never changes quantities');
+});
+
+test('sheet check and tactical recommendations use current canonical state', () => {
+  fresh(state => {
+    state.character.hp = { current: 2, max: 20, temp: 0, auto: false };
+    state.character.gear.inventory.push({ id: 'issue-ring', name: 'Dormant Ring', location: 'equipped', quantity: 1, weight: 0, attunement: true, isAttuned: false });
+  });
+  assert.ok(D.inventoryIssues().some(issue => issue.itemId === 'issue-ring' && issue.code === 'attunement'));
+  const records = [
+    { id: 'shot', name: 'Empty Shot', action: 'Action', isAttack: true, damage: '1d8', ammunition: { total: 0, type: 'Arrows' } },
+    { id: 'line', name: 'Line Attack', action: 'Action', damage: '1d8', isAttack: true, summary: 'Strike every creature in a line and knock the target prone.' },
+    { id: 'dodge', name: 'Dodge', action: 'Action', group: 'core', summary: 'Defence until your next turn.' }
+  ];
+  const control = D.tacticalRecommendations(records, { range: 'near', enemies: 'group', goal: 'control' });
+  assert.equal(control[0].record.id, 'line');
+  assert.equal(control.some(entry => entry.record.id === 'shot'), false, 'actions without ammunition are excluded');
+  const defence = D.tacticalRecommendations(records, { range: 'near', enemies: 'single', goal: 'defence' });
+  assert.equal(defence[0].record.id, 'dodge', 'low HP increases defensive recommendations');
+});
+
 test('weight, three encumbrance modes and Push Drag Lift use one canonical calculation', () => {
   fresh(state => {
     state.character.abilities.STR = 10;
@@ -698,7 +759,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.8\.0/);
+  assert.match(index, /service-worker\.js\?v=9\.9\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -746,6 +807,6 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /\.action-numbers\{max-width:none/);
   assert.match(v9Css, /\.sheet-page\[hidden\]\{display:none!important\}/);
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-15/);
-  assert.match(worker, /app-v9\.js\?v=9\.8\.0/);
+  assert.match(worker, /character-sheet-v9-ux-16/);
+  assert.match(worker, /app-v9\.js\?v=9\.9\.0/);
 });

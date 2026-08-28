@@ -496,8 +496,9 @@
       if (!item) return;
       const next = S.clone(changes || {});
       if (next.name != null) next.name = String(next.name || 'Item').trim() || 'Item';
-      if (next.quantity != null) next.quantity = Math.max(1, Math.floor(number(next.quantity, 1)));
+      if (next.quantity != null) next.quantity = Math.max(item.isConsumable || next.isConsumable ? 0 : 1, Math.floor(number(next.quantity, 1)));
       if (next.weight != null) next.weight = Math.max(0, number(next.weight, 0));
+      if (next.capacityWeight != null) next.capacityWeight = Math.max(0, number(next.capacityWeight, 0));
       if (next.location != null && !S.ITEM_LOCATIONS.includes(next.location)) delete next.location;
       if (next.containerId != null) {
         next.containerId = String(next.containerId || '');
@@ -522,6 +523,7 @@
       gear.inventory = gear.inventory.filter(item => item.id !== id);
       gear.weapons = gear.weapons.filter(item => item.id !== id);
       gear.armor = gear.armor.filter(item => item.id !== id);
+      for (const loadout of gear.loadouts || []) delete loadout.items[id];
       for (const item of [...gear.inventory, ...gear.weapons, ...gear.armor]) {
         if (item.containerId === id) {
           item.containerId = '';
@@ -530,6 +532,72 @@
         }
       }
     }, 'item:remove');
+  }
+
+  function useConsumable(id) {
+    const source = S.get();
+    const item = findItem(source, id);
+    if (!item || !D.isConsumable(item)) return { ok: false, reason: 'item' };
+    const before = Math.max(0, Math.floor(number(item.quantity)));
+    if (before <= 0) return { ok: false, reason: 'empty', remaining: 0 };
+    update(state => {
+      const current = findItem(state, id);
+      if (current) current.quantity = Math.max(0, Math.floor(number(current.quantity)) - 1);
+    }, `consumable:use:${item.name}`);
+    return { ok: true, name: item.name, remaining: before - 1 };
+  }
+
+  function saveLoadout(name) {
+    const label = String(name || '').trim();
+    if (!label) return { ok: false, reason: 'name' };
+    let id = '';
+    update(state => {
+      const gear = state.character.gear;
+      const items = Object.fromEntries(D.inventory(state).map(item => [item.id, { location: item.location, containerId: item.containerId || '' }]));
+      const current = (gear.loadouts || []).find(entry => entry.name.toLowerCase() === label.toLowerCase());
+      if (current) { current.name = label; current.items = items; id = current.id; }
+      else {
+        id = S.uid('loadout');
+        gear.loadouts = [...(gear.loadouts || []), { id, name: label, items }].slice(-8);
+      }
+    }, 'loadout:save');
+    return { ok: true, id, name: label };
+  }
+
+  function applyLoadout(id) {
+    const source = S.get();
+    const selected = (source.character.gear.loadouts || []).find(entry => entry.id === id);
+    if (!selected) return { ok: false, reason: 'missing' };
+    update(state => {
+      const all = D.inventory(state);
+      const byId = new Map(all.map(item => [item.id, item]));
+      for (const item of all) {
+        const saved = selected.items?.[item.id];
+        if (!saved) continue;
+        item.containerId = '';
+        item.location = S.ITEM_LOCATIONS.includes(saved.location) ? saved.location : 'carried';
+      }
+      for (const item of all) {
+        const saved = selected.items?.[item.id];
+        const parent = saved?.containerId ? byId.get(saved.containerId) : null;
+        if (parent?.isContainer && parent.id !== item.id) {
+          item.containerId = parent.id;
+          item.location = parent.location;
+        }
+      }
+      for (const item of all.filter(entry => entry.isContainer && !entry.containerId)) syncContainedLocations(state, item.id, item.location);
+    }, `loadout:apply:${selected.name}`);
+    return { ok: true, id, name: selected.name };
+  }
+
+  function deleteLoadout(id) {
+    let removed = false;
+    update(state => {
+      const before = (state.character.gear.loadouts || []).length;
+      state.character.gear.loadouts = (state.character.gear.loadouts || []).filter(entry => entry.id !== id);
+      removed = state.character.gear.loadouts.length !== before;
+    }, 'loadout:delete');
+    return removed;
   }
 
   function spendAmmunition(weaponId) {
@@ -873,7 +941,7 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    addItem, updateItem, moveItem, setItemEquipped, removeItem, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
+    addItem, updateItem, moveItem, setItemEquipped, removeItem, useConsumable, saveLoadout, applyLoadout, deleteLoadout, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
     setMoney, adjustMoney, adjustCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveJournalEntry, deleteJournalEntry, toggleJournalFavorite, saveBio, setUi
   };
