@@ -21,8 +21,8 @@ jobs:
             js/classes/treasure-hunter/choices-v7s.js \
             js/classes/treasure-hunter/content-v9.js \
             js/classes/class-registry-v10.js js/classes/treasure-hunter/register-v10.js \
-            js/classes/occultist/data-v10.js js/classes/occultist/import-v10.js \
-            js/core/gear-rules-v9.js js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
+            js/classes/occultist/data-v10.js js/classes/occultist/full-rules-v10.js js/classes/occultist/import-v10.js \
+            js/core/gear-rules-v9.js js/core/homebrew-library-v10.js js/core/spell-catalog-v10.js js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
             js/core/derived-v9.js js/core/commands-v9.js js/core/roster-v9.js \
             js/core/catalog-srd.js js/ui/portrait-cropper.js js/ui/app-v9.js js/ui/occultist-v10.js service-worker.js
           do
@@ -46,9 +46,10 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v10-multiclass-2' service-worker.js
-          grep -q "service-worker.js?v=10.0.1" index.html
-          test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 8
+          grep -q 'character-sheet-v10-homebrew-spells-1' service-worker.js
+          grep -q "service-worker.js?v=10.1.0" index.html
+          test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 9
+          grep -q 'id="spellsPage"' index.html
           grep -q 'id="bioPage"' index.html
           grep -q 'id="builderBtn"' index.html
           ! grep -q 'id="editBtn"' index.html

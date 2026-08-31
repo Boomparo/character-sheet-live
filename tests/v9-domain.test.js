@@ -35,10 +35,13 @@ for (const file of [
   'js/classes/treasure-hunter/relics-v7s.js',
   'js/classes/treasure-hunter/choices-v7s.js',
   'js/core/gear-rules-v9.js',
+  'js/core/homebrew-library-v10.js',
   'js/classes/treasure-hunter/content-v9.js',
   'js/classes/class-registry-v10.js',
   'js/classes/treasure-hunter/register-v10.js',
   'js/classes/occultist/data-v10.js',
+  'js/classes/occultist/full-rules-v10.js',
+  'js/core/spell-catalog-v10.js',
   'js/core/state-v9.js', 'js/core/rules-2024.js', 'js/core/origin-v9.js',
   'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/classes/occultist/import-v10.js', 'js/core/catalog-srd.js'
 ]) require(path.join(root, file));
@@ -50,8 +53,9 @@ const T = global.TreasureHunterDataV7s;
 const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
+const Homebrew = global.CharacterHomebrewLibrary;
 
-assert.equal(S.APP_VERSION, '10.0.1-multiclass');
+assert.equal(S.APP_VERSION, '10.1.0-homebrew-spells');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -65,7 +69,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 19);
+  assert.equal(state.schemaVersion, 20);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -777,9 +781,10 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=10\.0\.1/);
+  assert.match(index, /service-worker\.js\?v=10\.1\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
-  assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
+  assert.equal((index.match(/class="sheet-page"/g) || []).length, 9);
+  assert.match(index, /id="spellsPage"/);
   assert.match(index, /id="bioPage"/);
   assert.match(index, /id="builderBtn"/);
   assert.match(index, /id="historyBtn"/);
@@ -828,8 +833,8 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /grid-template-columns:218px minmax\(0,1fr\)/, 'desktop uses a persistent navigation rail');
   assert.match(app, /class="page-dot"[^>]+><span>\$\{page\.title\}<\/span>/, 'desktop navigation exposes readable page labels');
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v10-multiclass-2/);
-  assert.match(worker, /app-v9\.js\?v=10\.0\.1/);
+  assert.match(worker, /character-sheet-v10-homebrew-spells-1/);
+  assert.match(worker, /app-v9\.js\?v=10\.1\.0/);
 });
 
 test('class registry keeps Treasure Hunter and Occultist state independent', () => {
@@ -858,4 +863,46 @@ test('Occultist knowledge, slots, rest and spell preparation use their own rules
   assert.equal(S.get().classes.occultist.slotsUsed[1], 1, 'Short Rest does not recover spell slots');
   C.rest('long');
   assert.equal(S.get().classes.occultist.slotsUsed[1], 0, 'Long Rest recovers spell slots');
+});
+
+test('shared Homebrew items persist outside character state and enter the common catalog', async () => {
+  Homebrew.importAll({ items: [], spells: [], potionRecipes: [] }, 'replace');
+  const saved = Homebrew.saveItem({ name: 'Moon Compass', itemType: 'item', weight: 1, notes: 'Points toward the last opened gate.' });
+  assert.equal(Homebrew.items().length, 1);
+  assert.equal(saved.userHomebrew, true);
+  fresh(state => { state.character.name = 'Another Hero'; });
+  assert.equal(Homebrew.items()[0].name, 'Moon Compass', 'changing character does not change the shared definition library');
+  const catalog = await Catalog.load();
+  assert.ok(catalog.find(item => item.libraryId === saved.libraryId), 'shared item is selectable from the regular item catalog');
+});
+
+test('Occultist learns global spells and potion projects create independent inventory items', () => {
+  Homebrew.importAll({ items: [], spells: [], potionRecipes: [] }, 'replace');
+  fresh(state => { state.character.classKey = 'occultist'; state.character.level = 5; state.character.hp.current = 50; });
+  const spell = Homebrew.saveSpell({ name: 'Lantern Hex', level: 1, school: 'Divination', time: 'Action', range: '60 ft.', desc: 'The target sheds revealing light.' });
+  assert.equal(C.learnOccultistSpell(spell).ok, true);
+  assert.equal(C.toggleOccultistSpell(spell.id).ok, true);
+  assert.equal(C.castOccultistSpell(spell.id).ok, true);
+  assert.equal(S.get().classes.occultist.slotsUsed[1], 1);
+
+  assert.equal(C.setOccultistScience('alchymie', 3).ok, true);
+  const experiment = C.craftOccultistExperiment([]);
+  assert.equal(experiment.ok, true);
+  assert.ok(S.get().character.gear.inventory.find(item => item.id === experiment.itemId && item.expiresAfterLongRests === 1));
+
+  const recipe = Homebrew.savePotionRecipe({ name: 'Clarity Draught', timeMinutes: 30, quantity: 2, effect: 'Advantage on the next Investigation check.' });
+  const project = C.startPotionProject(recipe, 2);
+  assert.equal(project.ok, true);
+  assert.equal(C.progressPotionProject(project.id, 60).complete, true);
+  assert.equal(S.get().character.gear.inventory.find(item => item.name === 'Clarity Draught').quantity, 2);
+});
+
+test('Lili legacy JSON converts to a separate complete Occultist state', () => {
+  const source = { name:'Lili',classKey:'occultist',level:1,abilities:{STR:8,DEX:14,CON:12,INT:16,WIS:12,CHA:10},sciences:{astrologie:1,esoterika:1},scienceChoices:{astrologieCantrip:'vicious-horoscope',esoterikaCantrip:'blade-ward'},spells:[{libraryId:'predurceni',name:'Předurčení',level:1,prepared:true}],items:[{id:'backpack',name:'Backpack'}] };
+  const converted = global.OccultistLegacyImportV10.convert(source);
+  assert.equal(converted.character.name, 'Lili');
+  assert.equal(converted.character.classKey, 'occultist');
+  assert.equal(converted.classes.occultist.sciences.astrologie, 1);
+  assert.ok(converted.classes.occultist.spells.find(spell => spell.id === 'predurceni')?.prepared);
+  assert.ok(converted.character.gear.inventory.find(item => item.name === 'Backpack')?.isContainer);
 });

@@ -35,7 +35,11 @@
     occult.choices.classSkills = unique(payload.classSkillChoices?.occultist || payload.classSkills).slice(0,3);
     occult.choices.mysticLanguage = String(payload.mysticLanguage || '');
     occult.choices.scienceChoices = { ...occult.choices.scienceChoices, ...(payload.scienceChoices || {}) };
-    occult.spells = (payload.spells || []).map(spell => ({ ...S.clone(spell), id:spell.id || spell.libraryId, prepared:!!spell.prepared }));
+    occult.spells = (payload.spells || []).map(spell => {
+      const snapshot=S.clone(spell), id=spell.id || spell.libraryId;
+      const builtIn=window.OccultistDataV10?.spells?.some(definition=>definition.id===id);
+      return { ...snapshot, id, prepared:!Number(spell.level)||!!spell.prepared, added:!builtIn, definition:builtIn?undefined:{...snapshot,id} };
+    }).filter(spell=>spell.id);
     occult.ritualNotes = String(payload.ritualNotes || '');
 
     c.gear.weapons = (payload.weapons || []).map((weapon,index) => weapon.id === 'dagger' ? item(`weapon-dagger-${index+1}`,'Dagger',1,{itemType:'weapon',location:'equipped',equipped:true,damage:'1d4',damageType:'Piercing',properties:['Finesse','Light','Thrown (20/60)'],rangeText:'20/60 ft.',category:'Simple Melee Weapon'}) : item(`weapon-${weapon.id||index+1}`,weapon.name||weapon.id||'Imported weapon',number(weapon.weight,1),{itemType:'weapon',location:weapon.equipped?'equipped':'carried',...S.clone(weapon)}));

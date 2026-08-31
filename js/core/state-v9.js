@@ -5,12 +5,12 @@
   const ClassRegistry = window.CharacterClassRegistry;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 19;
-  const APP_VERSION = '10.0.1-multiclass';
+  const SCHEMA_VERSION = 20;
+  const APP_VERSION = '10.1.0-homebrew-spells';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
-  const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
+  const PAGE_IDS = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'spellsPage', 'gearPage', 'npcsPage', 'bioPage'];
   const CHOICE_ARRAYS = [
     'classSkills', 'ancientLanguages', 'vehicles', 'weaponMasteries',
     'feat4', 'feat8', 'feat12', 'feat16', 'epicBoon19'
@@ -460,7 +460,7 @@
     if (sourceSchema < 16) s.campaign.notes = [];
 
     const ui = s.ui;
-    ui.page = clamp(ui.page, 0, 7);
+    ui.page = clamp(ui.page, 0, PAGE_IDS.length - 1);
     ui.socialTab = ui.socialTab === 'bio' ? 'bio' : 'npcs';
     ui.npcSort = ['alphabetical', 'chronological', 'favorites'].includes(ui.npcSort) ? ui.npcSort : 'alphabetical';
     ui.campaignView = ['directory', 'journal', 'relations'].includes(ui.campaignView) ? ui.campaignView : 'directory';

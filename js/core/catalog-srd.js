@@ -2,6 +2,7 @@
   'use strict';
 
   const GearRules = window.GearRulesV9;
+  const Homebrew = window.CharacterHomebrewLibrary;
   const CACHE_KEY = 'v9-srd-2024-items-v6';
   const CACHE_MS = 7 * 24 * 60 * 60 * 1000;
   const EQUIPMENT_URL = 'https://raw.githubusercontent.com/5e-bits/5e-database/main/src/2024/en/5e-SRD-Equipment.json';
@@ -191,9 +192,9 @@
 
   function mergeCatalog(items) {
     const byName = new Map();
-    for (const item of [...items, ...CURATED_FALLBACK]) {
+    for (const item of [...items, ...CURATED_FALLBACK, ...(Homebrew?.items?.() || [])]) {
       const key = String(item.name || '').toLowerCase();
-      if (!byName.has(key)) byName.set(key, item);
+      if (!byName.has(key) || item.userHomebrew) byName.set(key, item);
     }
     return [...byName.values(), ...HOME_BREW_ITEMS];
   }
@@ -302,4 +303,5 @@
     RARITY_ORDER, TAG_OPTIONS, HOME_BREW_ITEMS, CURATED_FALLBACK,
     attribution: "D&D SRD 5.2.1 (CC BY 4.0); firearm variants: Luky's campaign rules"
   };
+  Homebrew?.subscribe?.(() => { memory = null; });
 })();

@@ -125,9 +125,21 @@
     activate(profile, roster);
     return true;
   }
+  function importCharacter(payload, fallbackName = 'Imported Character') {
+    if (!payload || typeof payload !== 'object') return null;
+    saveCurrent();
+    const roster = ensure();
+    const data = S.normalize(clone(payload));
+    data.character.name = String(data.character?.name || fallbackName).trim() || fallbackName;
+    const id = uid();
+    const profile = summary(data, id);
+    roster.profiles.push(profile);
+    activate(profile, roster);
+    return id;
+  }
 
   ensure();
   S.subscribe(saveCurrent);
-  window.CharacterRoster = { KEY, LEGACY_KEY, list, activeId, saveCurrent, switchTo, create, duplicate, remove, exportAll, importAll };
+  window.CharacterRoster = { KEY, LEGACY_KEY, list, activeId, saveCurrent, switchTo, create, duplicate, remove, exportAll, importAll, importCharacter };
   window.V7SRoster = window.CharacterRoster;
 })();

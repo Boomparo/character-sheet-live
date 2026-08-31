@@ -160,6 +160,11 @@
         }
         state.character.deathSaves = { successes: 0, failures: 0 };
         state.character.origin.background.luckUsed = 0;
+        for (const item of state.character.gear.inventory || []) {
+          if (!Number.isFinite(Number(item.expiresAfterLongRests)) || item.expired) continue;
+          item.expiresAfterLongRests = Math.max(0, Number(item.expiresAfterLongRests) - 1);
+          if (item.expiresAfterLongRests === 0) item.expired = true;
+        }
       } else if (config.hitDice) {
         const dieKey = definition?.hitDie || 'd10';
         const dieSize = Math.max(1, number(String(dieKey).replace('d', ''), 10));
@@ -431,14 +436,35 @@
     return (!spell.requiredLevel || D.level(source) >= spell.requiredLevel) && (!spell.scienceKey || number(classState.sciences[spell.scienceKey]) >= number(spell.scienceLevel, 1));
   }
 
+  function occultistSpellDefinition(spellId, source = S.get()) {
+    const definition = activeDefinition(source), entry = source.classes?.occultist?.spells?.find(item => item.id === spellId);
+    return definition?.spells?.find(item => item.id === spellId) || entry?.definition || null;
+  }
+
+  function learnOccultistSpell(spell) {
+    if (activeDefinition()?.id !== 'occultist' || !spell?.id) return { ok: false, reason: 'class' };
+    const source = S.get();
+    if (source.classes.occultist.spells.some(entry => entry.id === spell.id)) return { ok: false, reason: 'duplicate' };
+    const snapshot = S.clone(spell);
+    update(state => { state.classes.occultist.spells.push({ id: snapshot.id, prepared: snapshot.level === 0, added: true, definition: snapshot }); }, `occultist:learn:${snapshot.id}`);
+    return { ok: true, spell: snapshot };
+  }
+
+  function forgetOccultistSpell(spellId) {
+    const source = S.get(), entry = source.classes?.occultist?.spells?.find(item => item.id === spellId);
+    if (activeDefinition(source)?.id !== 'occultist' || !entry?.added) return false;
+    update(state => { state.classes.occultist.spells = state.classes.occultist.spells.filter(item => item.id !== spellId); }, `occultist:forget:${spellId}`);
+    return true;
+  }
+
   function toggleOccultistSpell(spellId) {
     const source = S.get(), definition = activeDefinition(source);
-    const spell = definition?.spells?.find(entry => entry.id === spellId);
+    const spell = occultistSpellDefinition(spellId, source);
     if (definition?.id !== 'occultist' || !spell || !occultistSpellAvailable(spell, source)) return { ok: false, reason: 'spell' };
     const current = source.classes.occultist.spells.find(entry => entry.id === spellId);
     const preparing = !current?.prepared;
     const limit = definition.progressionAt(D.level(source)).prepared;
-    const prepared = source.classes.occultist.spells.filter(entry => entry.prepared && number(entry.level, definition.spells.find(item => item.id === entry.id)?.level) > 0).length;
+    const prepared = source.classes.occultist.spells.filter(entry => entry.prepared && number(entry.definition?.level, definition.spells.find(item => item.id === entry.id)?.level) > 0).length;
     if (preparing && spell.level > 0 && prepared >= limit) return { ok: false, reason: 'prepared', prepared, limit };
     update(state => {
       const list = state.classes.occultist.spells;
@@ -459,7 +485,7 @@
 
   function castOccultistSpell(spellId) {
     const source = S.get(), definition = activeDefinition(source);
-    const spell = definition?.spells?.find(entry => entry.id === spellId);
+    const spell = occultistSpellDefinition(spellId, source);
     if (definition?.id !== 'occultist' || !spell || !occultistSpellAvailable(spell, source)) return { ok: false, reason: 'spell' };
     if (!spell.level) return { ok: true, spell, slot: 0 };
     const learned = source.classes.occultist.spells.find(entry => entry.id === spellId);
@@ -497,6 +523,75 @@
       state.classes.occultist.slotsUsed[level] = Math.max(0, number(state.classes.occultist.slotsUsed[level]) - 1);
     }, `occultist:energy:${level}`);
     return { ok: true, hp: S.get().character.hp.current, slot: level };
+  }
+
+  function craftOccultistExperiment(excludedResults = []) {
+    const source = S.get(), definition = activeDefinition(source), classState = source.classes?.occultist;
+    if (definition?.id !== 'occultist' || number(classState?.sciences?.alchymie) < 3) return { ok: false, reason: 'science' };
+    if (number(classState.resources?.experiment) >= 1) return { ok: false, reason: 'used' };
+    const excluded = unique(excludedResults.map(Number)).filter(result => result >= 1 && result <= 6).slice(0, 5);
+    const hpRolls = excluded.map(() => 2 + Math.floor(Math.random() * 4));
+    const hpCost = hpRolls.reduce((sum, roll) => sum + roll, 0);
+    if (number(source.character.hp.current) <= hpCost) return { ok: false, reason: 'hp', hpCost, hpRolls };
+    const available = (definition.potionResults || []).filter(result => !excluded.includes(result.roll));
+    const result = available[Math.floor(Math.random() * available.length)];
+    if (!result) return { ok: false, reason: 'results' };
+    let itemId = '';
+    update(state => {
+      state.character.hp.current -= hpCost;
+      state.classes.occultist.resources.experiment = 1;
+      state.classes.occultist.potionCrafting.excludedResults = excluded;
+      const item = {
+        id:S.uid('item'), name:result.name, itemType:'item', category:'Alchemical Experiment', kind:'Equipment', rarity:'Mundane',
+        description:result.effect, notes:result.effect, source:'Occultist · Experiment pro každý den', homebrew:true,
+        tags:['consumable','potion','homebrew'], isConsumable:true, quantity:1, weight:.5, location:'carried', containerId:'',
+        expiresAfterLongRests:1, craftedAt:new Date().toISOString(), modifiers:[]
+      };
+      itemId = item.id;
+      state.character.gear.inventory.push(item);
+      state.classes.occultist.potionCrafting.history.push({ id:S.uid('brew'), at:new Date().toISOString(), roll:result.roll, name:result.name, excluded, hpCost, hpRolls });
+      state.classes.occultist.potionCrafting.history = state.classes.occultist.potionCrafting.history.slice(-20);
+    }, 'occultist:experiment');
+    return { ok: true, result, excluded, hpCost, hpRolls, itemId };
+  }
+
+  function startPotionProject(recipe, quantity = 1) {
+    if (!recipe?.id && !recipe?.libraryId) return { ok: false, reason: 'recipe' };
+    const snapshot = S.clone(recipe), count = Math.max(1, Math.floor(number(quantity, 1))), id = S.uid('potion-project');
+    update(state => {
+      const classState = state.classes.occultist;
+      classState.potionCrafting.projects.push({ id, recipe:snapshot, quantity:count, progressMinutes:0, totalMinutes:Math.max(0, number(snapshot.timeMinutes)) * count, startedAt:new Date().toISOString() });
+    }, 'potion-project:start');
+    return { ok: true, id };
+  }
+
+  function progressPotionProject(projectId, minutes) {
+    let result = { ok:false, reason:'missing' };
+    update(state => {
+      const projects = state.classes.occultist.potionCrafting.projects;
+      const project = projects.find(entry => entry.id === projectId); if (!project) return;
+      project.progressMinutes = Math.max(0, number(project.progressMinutes) + Math.max(0, number(minutes)));
+      const complete = project.progressMinutes >= project.totalMinutes;
+      if (complete) {
+        const recipe = project.recipe || {};
+        state.character.gear.inventory.push({
+          id:S.uid('item'), name:recipe.name || 'Crafted Potion', itemType:'item', category:'Potion', kind:'Equipment', rarity:'Mundane',
+          description:recipe.effect || recipe.description || '', notes:recipe.effect || recipe.description || '', source:recipe.source || 'Homebrew Potion Recipe',
+          homebrew:true, tags:['consumable','potion','homebrew'], isConsumable:true, quantity:Math.max(1, number(project.quantity,1)), weight:.5,
+          location:'carried', containerId:'', modifiers:[]
+        });
+        state.classes.occultist.potionCrafting.projects = projects.filter(entry => entry.id !== projectId);
+      }
+      result = { ok:true, complete, project:S.clone(project) };
+    }, 'potion-project:progress');
+    return result;
+  }
+
+  function cancelPotionProject(projectId) {
+    const source = S.get();
+    if (!source.classes?.occultist?.potionCrafting?.projects?.some(entry => entry.id === projectId)) return false;
+    update(state => { state.classes.occultist.potionCrafting.projects = state.classes.occultist.potionCrafting.projects.filter(entry => entry.id !== projectId); }, 'potion-project:cancel');
+    return true;
   }
 
   function saveQuickCharacter(payload) {
@@ -1053,7 +1148,7 @@
     update(state => {
       state.ui[key] = value;
       if (key === 'pageId') {
-        const pages = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'gearPage', 'npcsPage', 'bioPage'];
+        const pages = ['characterPage', 'actionsPage', 'skillsPage', 'featuresPage', 'relicsPage', 'spellsPage', 'gearPage', 'npcsPage', 'bioPage'];
         const index = pages.indexOf(value);
         if (index >= 0) state.ui.page = index;
       }
@@ -1065,7 +1160,8 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
-    setOccultistScience, setOccultistChoice, toggleOccultistSpell, adjustOccultistSlot, castOccultistSpell, useOccultistResource, completeOccultistDawn, restoreOccultistSlotWithHp,
+    setOccultistScience, setOccultistChoice, toggleOccultistSpell, learnOccultistSpell, forgetOccultistSpell, adjustOccultistSlot, castOccultistSpell, useOccultistResource, completeOccultistDawn, restoreOccultistSlotWithHp,
+    craftOccultistExperiment, startPotionProject, progressPotionProject, cancelPotionProject,
     addItem, updateItem, moveItem, setItemEquipped, removeItem, useConsumable, saveLoadout, applyLoadout, deleteLoadout, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
     setMoney, adjustMoney, adjustCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveJournalEntry, deleteJournalEntry, toggleJournalFavorite, saveBio, setUi

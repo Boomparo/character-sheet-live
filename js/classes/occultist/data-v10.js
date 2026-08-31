@@ -148,6 +148,14 @@
     {id:'occult-magic-block',name:'Blokování magie',action:'Action',level:6,summary:'MagBlock check potlačí magický efekt na dvě kola.',resourceId:'magBlock'},
     {id:'occult-life-transfer',name:'Přelévání života',action:'Action',level:9,summary:'Dotykem předej nebo přijmi HP.',resourceId:'lifeTransfer'}
   ];
+  const POTION_RESULTS = [
+    {roll:1,name:'Potion of Healing',effect:'Action on another creature or Bonus Action on yourself: restore 2d4 + 2 HP.',itemType:'potion'},
+    {roll:2,name:'Elixir of Strength',effect:'+2 to Strength score for 1 hour.',itemType:'elixir'},
+    {roll:3,name:'Skin-Hardening Tonic',effect:'+2 AC for 1 hour.',itemType:'tonic'},
+    {roll:4,name:'Hopsinková šťáva',effect:'For 1 hour movement is made by jumps: up to four 10-ft. jumps or eight 5-ft. jumps per turn; Dash doubles the allowance.',itemType:'potion'},
+    {roll:5,name:'Spider Adhesion Serum',effect:'For 1 hour you can use normal movement to walk on steep surfaces, walls and ceilings.',itemType:'serum'},
+    {roll:6,name:'Alchemical Glue',effect:'Action: cover up to 10 ft². Movement costs ×5. It dries after 1 minute; a creature still inside has Speed 0 until it succeeds on DC 18 Strength save or escapes another way.',itemType:'utility'}
+  ];
 
   const costToLevel = level => SCIENCE_LEVELS.slice(0, Math.max(0, Number(level) || 0)).reduce((sum, entry) => sum + entry.cost, 0);
   const knowledgeSpent = classState => Object.keys(SCIENCES).reduce((sum, key) => sum + costToLevel(classState?.sciences?.[key]), 0);
@@ -157,7 +165,8 @@
   function createState() {
     return {
       sciences:{spiritismus:0,astrologie:0,kabala:0,esoterika:0,alchymie:0}, slotsUsed:{1:0,2:0,3:0}, spells:[], resources:{},
-      choices:{classSkills:[],mysticLanguage:'',mysticSkill:'',scienceChoices:{}}, ritualNotes:'', lastDawn:''
+      choices:{classSkills:[],mysticLanguage:'',mysticSkill:'',scienceChoices:{}}, ritualNotes:'', lastDawn:'',
+      potionCrafting:{excludedResults:[],projects:[],history:[]}
     };
   }
   function normalizeState(value = {}) {
@@ -165,12 +174,19 @@
     value.sciences = {...base.sciences,...(value.sciences || {})};
     for (const key of Object.keys(value.sciences)) value.sciences[key] = Math.max(0, Math.min(5, Number(value.sciences[key]) || 0));
     value.slotsUsed = {...base.slotsUsed,...(value.slotsUsed || {})};
-    value.spells = Array.isArray(value.spells) ? value.spells : [];
+    value.spells = Array.isArray(value.spells) ? value.spells.filter(entry => entry && typeof entry === 'object').map(entry => ({
+      ...entry, id:String(entry.id || ''), prepared:!!entry.prepared, added:!!entry.added,
+      definition:entry.definition && typeof entry.definition === 'object' ? entry.definition : undefined
+    })).filter(entry => entry.id) : [];
     value.resources = {...base.resources,...(value.resources || {})};
     value.choices = {...base.choices,...(value.choices || {}),scienceChoices:{...base.choices.scienceChoices,...(value.choices?.scienceChoices || {})}};
     value.choices.classSkills = Array.isArray(value.choices.classSkills) ? value.choices.classSkills.filter(Boolean) : [];
     value.ritualNotes = String(value.ritualNotes || '');
     value.lastDawn = String(value.lastDawn || '');
+    value.potionCrafting = value.potionCrafting && typeof value.potionCrafting === 'object' ? value.potionCrafting : {};
+    value.potionCrafting.excludedResults = Array.isArray(value.potionCrafting.excludedResults) ? [...new Set(value.potionCrafting.excludedResults.map(Number).filter(result => result >= 1 && result <= 6))] : [];
+    value.potionCrafting.projects = Array.isArray(value.potionCrafting.projects) ? value.potionCrafting.projects : [];
+    value.potionCrafting.history = Array.isArray(value.potionCrafting.history) ? value.potionCrafting.history.slice(-20) : [];
     return value;
   }
   function choiceRequirements(source) {
@@ -190,11 +206,11 @@
     id:'occultist',name:'Occultist',shortName:'Occultist',sigil:'☿',accent:'#6f4b87',motto:'Scientia arcana, non superstitio.',
     maxLevel:12,hitDie:'d10',hitDieAverage:6,primaryAbilities:['CON','INT'],saves:['INT','WIS'],
     skills:['Acrobatics','Arcana','Deception','History','Insight','Investigation','Medicine','Nature','Perception','Religion'],skillChoiceCount:3,
-    armor:['Light Armor'],weapons:['Simple Weapons'],tools:[],systems:['spellcasting','sciences'],features:FEATURES,actions:ACTIONS,
-    progression:PROGRESSION,pages:{classSystem:{id:'relicsPage',title:'SCIENCES'}},createState,normalizeState,choiceRequirements,
+    armor:['Light Armor'],weapons:['Simple Weapons'],tools:[],systems:['spellcasting','sciences','spells'],features:FEATURES,actions:ACTIONS,
+    progression:PROGRESSION,pages:{classSystem:{id:'relicsPage',title:'SCIENCES'},spells:{id:'spellsPage',title:'SPELLS'}},createState,normalizeState,choiceRequirements,
     hpMax(level,constitutionModifier){return Math.max(1,10+Number(constitutionModifier||0)+(Math.max(1,Number(level)||1)-1)*(6+Number(constitutionModifier||0)));},
     scienceLevels:SCIENCE_LEVELS,sciences:SCIENCES,spells:SPELLS,resources:RESOURCES,scienceChoices:SCIENCE_CHOICES,
-    progressionAt,costToLevel,knowledgeSpent,resourceUnlocked
+    progressionAt,costToLevel,knowledgeSpent,resourceUnlocked,potionResults:POTION_RESULTS
   });
   window.OccultistDataV10 = definition;
 })();
