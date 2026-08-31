@@ -75,12 +75,16 @@
     activate(profile, roster);
     return true;
   }
-  function create(name = 'New Character') {
+  function create(name = 'New Character', classKey = 'treasureHunter') {
     saveCurrent();
     const roster = ensure();
     const id = uid();
     const fresh = S.fresh();
     fresh.character.name = name;
+    const canonicalClass = window.CharacterClassRegistry?.canonicalId(classKey) || 'treasureHunter';
+    fresh.character.classKey = canonicalClass;
+    fresh.character.level = 1;
+    S.normalize(fresh, { skipAbilityMigration: true });
     const profile = summary(fresh, id);
     roster.profiles.push(profile);
     activate(profile, roster);

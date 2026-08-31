@@ -193,11 +193,13 @@
   function renderTop() {
     const source = state();
     const health = D.hp(source);
-    const total = T.coolTotal(D.level(source));
-    const used = Math.min(total, Number(source.classes.treasureHunter.coolUsed) || 0);
+    const definition = D.classDefinition(source);
+    const isTreasureHunter = definition?.id === 'treasureHunter';
+    const total = isTreasureHunter ? T.coolTotal(D.level(source)) : (definition?.progressionAt?.(D.level(source))?.slots || []).reduce((sum, value) => sum + value, 0);
+    const used = isTreasureHunter ? Math.min(total, Number(source.classes.treasureHunter.coolUsed) || 0) : Object.values(source.classes.occultist?.slotsUsed || {}).reduce((sum, value) => sum + Number(value || 0), 0);
     $('#topName').textContent = source.character.name || 'Unnamed Character';
     const subclass = D.subclassName(source);
-    $('#topClass').textContent = `${source.character.race || 'Species'} • Treasure Hunter ${D.level(source)}${subclass ? ` / ${subclass}` : ''} • PB ${S.signed(D.pb(source))}`;
+    $('#topClass').textContent = `${source.character.race || 'Species'} • ${definition?.name || 'Class'} ${D.level(source)}${subclass ? ` / ${subclass}` : ''} • PB ${S.signed(D.pb(source))}`;
     $('#hudHp').textContent = `${health.current}/${health.max}${health.temp ? ` +${health.temp}` : ''}`;
     $('#hudAc').textContent = D.armorClass(source);
     $('#hudCool').textContent = `${Math.max(0, total - used)}/${total}`;
@@ -296,7 +298,7 @@
     });
     records.push(...D.itemActions(source));
     (source.character.spells || []).forEach(spell => records.push({ ...spell, id: `spell:${spell.id}`, source: spell.source || 'Spell', group: 'spells', isAttack: !!spell.isAttack }));
-    if (D.subclassHasSystem('relics', source)) {
+    if (source.character.classKey === 'treasureHunter' && D.subclassHasSystem('relics', source)) {
       for (const entry of source.classes.treasureHunter.relics || []) {
         if (!entry.prepared) continue;
         const relic = Relics.find(item => item.id === entry.relicId);
@@ -308,11 +310,23 @@
         });
       }
     }
-    T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && D.featureMatchesSubclass(feature, source)).forEach(feature => records.push({
-      id: feature.id, name: feature.name, action: feature.action, source: `Treasure Hunter ${feature.level}`, group: 'treasure',
-      summary: feature.fullText || feature.summary, cost: Number(feature.cost) || 0, parentId: feature.parentId || FEATURE_PARENT[feature.id] || '',
-      featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id), damageBonus: featureDamageBadge(feature.id, source)
-    }));
+    if (source.character.classKey === 'treasureHunter') {
+      T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && D.featureMatchesSubclass(feature, source)).forEach(feature => records.push({
+        id: feature.id, name: feature.name, action: feature.action, source: `Treasure Hunter ${feature.level}`, group: 'treasure',
+        summary: feature.fullText || feature.summary, cost: Number(feature.cost) || 0, parentId: feature.parentId || FEATURE_PARENT[feature.id] || '',
+        featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id), damageBonus: featureDamageBadge(feature.id, source)
+      }));
+    } else {
+      const definition = D.classDefinition(source), classState = D.classState(source);
+      (definition?.actions || []).filter(action => action.level <= D.level(source)).forEach(action => {
+        const resource = action.resourceId ? definition.resources?.find(entry => entry.id === action.resourceId) : null;
+        records.push({ ...action, source: `${definition.name} ${action.level}`, group: 'treasure', resource: resource ? { kind: 'occultist', id: resource.id, used: Number(classState.resources?.[resource.id]) || 0, max: resource.max } : null });
+      });
+      (definition?.spells || []).filter(spell => (!spell.requiredLevel || spell.requiredLevel <= D.level(source)) && (!spell.scienceKey || Number(classState.sciences?.[spell.scienceKey]) >= Number(spell.scienceLevel || 1))).forEach(spell => records.push({
+        ...spell, id: `occult-spell:${spell.id}`, spellId: spell.id, action: spell.time, source: `${spell.science} spell`, group: 'spells',
+        summary: spell.desc, damage: spell.damage || '', isAttack: /attack|save/i.test(`${spell.attack || ''} ${spell.desc || ''}`)
+      }));
+    }
     records.push(...D.originActions(source));
     records.push(...coreActions());
     (source.character.customActions || []).forEach(action => records.push({ ...action, group: action.group || 'custom', source: action.source || 'Custom' }));
@@ -427,7 +441,7 @@
 
   function renderSkills() {
     const source = state();
-    const rows = Object.entries(D.SKILLS).map(([name, ability]) => {
+    const rows = Object.entries(D.SKILLS).filter(([name]) => name !== 'MagBlock' || (source.character.classKey === 'occultist' && D.level(source) >= 6)).map(([name, ability]) => {
       const status = D.skillStatus(name, source);
       const mode = D.effectiveRollMode('skill', name, source);
       const situational = D.situationalRollHints('skill', name, source);
@@ -517,6 +531,7 @@
 
   function renderFeatures() {
     const source = state();
+    if (source.character.classKey !== 'treasureHunter') { $('#featuresPage').innerHTML = ''; return; }
     const missing = [...Origin.originIncomplete(source), ...D.choiceRequirements(source)];
     const progression = source.ui.featureView === 'progression';
     let features = T.features.filter(feature => D.featureMatchesSubclass(feature, source) && (progression || feature.level <= D.level(source))).filter(feature => featureMatches(feature, source));
@@ -533,6 +548,7 @@
 
   function renderRelics() {
     const source = state();
+    if (source.character.classKey !== 'treasureHunter') { $('#relicsPage').innerHTML = ''; return; }
     if (!D.subclassHasSystem('relics', source)) {
       $('#relicsPage').innerHTML = '';
       return;
@@ -806,7 +822,7 @@
   }
 
   function visiblePages(source = state()) {
-    return PAGE_DEFINITIONS.filter(page => !page.system || D.subclassHasSystem(page.system, source));
+    return PAGE_DEFINITIONS.filter(page => !page.system || D.subclassHasSystem(page.system, source)).map(page => page.id === 'relicsPage' && source.character.classKey === 'occultist' ? { ...page, title: 'SCIENCES' } : page);
   }
   function syncPageVisibility() {
     const pages = visiblePages();
@@ -970,7 +986,7 @@
     local.pendingPortrait = c.portrait || '';
     $('#editName').value = c.name || '';
     $('#editRace').value = c.race || '';
-    $('#editLevel').innerHTML = Array.from({ length: 20 }, (_, index) => `<option value="${index + 1}" ${index + 1 === D.level(source) ? 'selected' : ''}>Level ${index + 1}</option>`).join('');
+    $('#editLevel').innerHTML = Array.from({ length: D.classDefinition(source)?.maxLevel || 20 }, (_, index) => `<option value="${index + 1}" ${index + 1 === D.level(source) ? 'selected' : ''}>Level ${index + 1}</option>`).join('');
     $('#editHpAuto').checked = c.hp.auto !== false;
     $('#editHpMax').value = D.hpMax(source);
     $('#editHpMax').disabled = c.hp.auto !== false;
@@ -1483,6 +1499,7 @@
     const payload = JSON.parse(text);
     if (payload && Array.isArray(payload.profiles)) return { kind: 'roster', data: payload };
     if (payload?.character && payload?.classes) return { kind: 'native', data: payload };
+    if (payload?.classKey === 'occultist' && payload?.sciences) return { kind: 'occultist', data: window.OccultistLegacyImportV10.convert(payload) };
     if (payload?.name && (payload.species || payload.attributes) && (Array.isArray(payload.class) || payload.background)) return { kind: 'character-craft', data: importCharacterCraft(payload) };
     if (payload?.format || payload?.name || payload?.abilities) return { kind: 'simple', data: importSimple(payload) };
     throw new Error('JSON format not recognized.');
@@ -1702,6 +1719,7 @@
   }
 
   function onClick(event) {
+    if (event.defaultPrevented) return;
     const hpTarget = event.target.closest('[data-open-hp]');
     if (hpTarget) { event.preventDefault(); openHp(); return; }
     const statTarget = event.target.closest('[data-stat-detail]');
@@ -2075,6 +2093,7 @@
   }
 
   function onSubmit(event) {
+    if (event.defaultPrevented) return;
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
     if (!['editForm', 'actionForm', 'actionUseForm', 'npcForm', 'journalForm', 'bioForm', 'moneyForm', 'restForm', 'itemEditForm', 'builderForm'].includes(form.id)) return;

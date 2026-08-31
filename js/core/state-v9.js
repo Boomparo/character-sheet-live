@@ -2,10 +2,11 @@
   'use strict';
 
   const GearRules = window.GearRulesV9;
+  const ClassRegistry = window.CharacterClassRegistry;
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
-  const SCHEMA_VERSION = 18;
-  const APP_VERSION = '9.10.1-desktop-polish';
+  const SCHEMA_VERSION = 19;
+  const APP_VERSION = '10.0.0-multiclass';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -38,7 +39,7 @@
       character: {
         name: '', race: '', classKey: 'treasureHunter', level: 1, portrait: '', size: '',
         hp: { current: 10, max: 10, temp: 0, auto: true },
-        hitDice: { d10: { spent: 0 } },
+        hitDice: { d6: { spent: 0 }, d8: { spent: 0 }, d10: { spent: 0 }, d12: { spent: 0 } },
         deathSaves: { successes: 0, failures: 0 },
         acMode: 'auto', acManual: 10, acBonus: 0,
         speed: 30, initiativeBonus: 0, inspiration: false,
@@ -73,7 +74,7 @@
           personality: '', ideals: '', bonds: '', flaws: '', appearance: '', backstory: '', allies: '', notes: ''
         }
       },
-      classes: {
+      classes: ClassRegistry?.freshStates() || {
         treasureHunter: {
           coolUsed: 0, featureUses: {}, relics: [],
           choices: {
@@ -220,7 +221,11 @@
     s.appVersion = APP_VERSION;
 
     const c = s.character;
-    c.level = clamp(c.level, 1, 20);
+    const canonicalClass = ClassRegistry?.canonicalId(c.classKey) || (c.classKey === 'treasure' ? 'treasureHunter' : String(c.classKey || 'treasureHunter'));
+    c.classKey = canonicalClass || 'treasureHunter';
+    s.classes = ClassRegistry?.normalizeStates(s.classes || {}) || s.classes;
+    const classDefinition = ClassRegistry?.get(c.classKey);
+    c.level = clamp(c.level, 1, classDefinition?.maxLevel || 20);
     c.name = String(c.name || '');
     c.race = String(c.race || '');
     c.conditions = unique(c.conditions);
@@ -242,7 +247,11 @@
     c.hp.max = Math.max(1, number(c.hp.max, 10));
     c.hp.temp = Math.max(0, number(c.hp.temp, 0));
     c.hp.auto = c.hp.auto !== false;
-    c.hitDice.d10.spent = clamp(c.hitDice.d10.spent, 0, c.level);
+    c.hitDice = c.hitDice && typeof c.hitDice === 'object' ? c.hitDice : {};
+    for (const die of ['d6', 'd8', 'd10', 'd12']) {
+      c.hitDice[die] = c.hitDice[die] && typeof c.hitDice[die] === 'object' ? c.hitDice[die] : { spent: 0 };
+      c.hitDice[die].spent = clamp(c.hitDice[die].spent, 0, c.level);
+    }
     c.deathSaves.successes = clamp(c.deathSaves.successes, 0, 3);
     c.deathSaves.failures = clamp(c.deathSaves.failures, 0, 3);
 

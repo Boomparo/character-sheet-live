@@ -36,8 +36,11 @@ for (const file of [
   'js/classes/treasure-hunter/choices-v7s.js',
   'js/core/gear-rules-v9.js',
   'js/classes/treasure-hunter/content-v9.js',
+  'js/classes/class-registry-v10.js',
+  'js/classes/treasure-hunter/register-v10.js',
+  'js/classes/occultist/data-v10.js',
   'js/core/state-v9.js', 'js/core/rules-2024.js', 'js/core/origin-v9.js',
-  'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/core/catalog-srd.js'
+  'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/classes/occultist/import-v10.js', 'js/core/catalog-srd.js'
 ]) require(path.join(root, file));
 
 const S = global.CharacterState;
@@ -48,7 +51,7 @@ const Relics = global.TreasureHunterRelicsV7s;
 const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 
-assert.equal(S.APP_VERSION, '9.10.1-desktop-polish');
+assert.equal(S.APP_VERSION, '10.0.0-multiclass');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -62,7 +65,7 @@ function fresh(mutator) {
 test('legacy V7 data migrates once without deleting the legacy key', () => {
   const state = S.get();
   assert.equal(state.character.name, 'Legacy Hero');
-  assert.equal(state.schemaVersion, 18);
+  assert.equal(state.schemaVersion, 19);
   assert.equal(state.character.speed, 30, 'legacy City Goblin speed is converted back to canonical base speed');
   assert.equal(D.speed(state), 25);
   assert.equal(D.ability('DEX', state), 16, 'stored origin bonus is not applied twice');
@@ -774,7 +777,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=9\.10\.1/);
+  assert.match(index, /service-worker\.js\?v=10\.0\.0/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 8);
   assert.match(index, /id="bioPage"/);
@@ -825,6 +828,34 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /grid-template-columns:218px minmax\(0,1fr\)/, 'desktop uses a persistent navigation rail');
   assert.match(app, /class="page-dot"[^>]+><span>\$\{page\.title\}<\/span>/, 'desktop navigation exposes readable page labels');
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v9-ux-19/);
-  assert.match(worker, /app-v9\.js\?v=9\.10\.1/);
+  assert.match(worker, /character-sheet-v10-multiclass-1/);
+  assert.match(worker, /app-v9\.js\?v=10\.0\.0/);
+});
+
+test('class registry keeps Treasure Hunter and Occultist state independent', () => {
+  const source = fresh(state => {
+    state.character.classKey = 'occultist';
+    state.character.level = 3;
+    state.classes.treasureHunter.coolUsed = 2;
+    state.classes.occultist.sciences.astrologie = 2;
+  });
+  assert.equal(D.classDefinition(source).id, 'occultist');
+  assert.equal(source.classes.treasureHunter.coolUsed, 2);
+  assert.equal(source.classes.occultist.sciences.astrologie, 2);
+  assert.equal(D.classDefinition({ ...source, character: { ...source.character, classKey: 'treasureHunter' } }).id, 'treasureHunter');
+});
+
+test('Occultist knowledge, slots, rest and spell preparation use their own rules', () => {
+  fresh(state => { state.character.classKey = 'occultist'; state.character.level = 3; state.character.hp.current = 20; });
+  assert.equal(C.setOccultistScience('astrologie', 2).ok, true);
+  assert.equal(C.setOccultistScience('esoterika', 2).ok, true);
+  assert.equal(C.setOccultistScience('kabala', 2).ok, false, 'cumulative knowledge budget is enforced');
+  C.setOccultistChoice('astrologieCantrip', 'vicious-horoscope');
+  assert.equal(C.toggleOccultistSpell('predurceni').ok, true);
+  assert.equal(C.castOccultistSpell('predurceni').ok, true);
+  assert.equal(S.get().classes.occultist.slotsUsed[1], 1);
+  C.rest('short');
+  assert.equal(S.get().classes.occultist.slotsUsed[1], 1, 'Short Rest does not recover spell slots');
+  C.rest('long');
+  assert.equal(S.get().classes.occultist.slotsUsed[1], 0, 'Long Rest recovers spell slots');
 });

@@ -7,13 +7,14 @@
   const Rules = window.DND2024Rules;
   const Origin = window.CharacterOrigin;
   const GearRules = window.GearRulesV9;
+  const ClassRegistry = window.CharacterClassRegistry;
   if (!S || !T || !Rules || !Origin) return;
 
   const SKILLS = {
     Acrobatics: 'DEX', 'Animal Handling': 'WIS', Arcana: 'INT', Athletics: 'STR', Deception: 'CHA',
     History: 'INT', Insight: 'WIS', Intimidation: 'CHA', Investigation: 'INT', Medicine: 'WIS',
     Nature: 'INT', Perception: 'WIS', Performance: 'CHA', Persuasion: 'CHA', Religion: 'INT',
-    'Sleight of Hand': 'DEX', Stealth: 'DEX', Survival: 'WIS'
+    'Sleight of Hand': 'DEX', Stealth: 'DEX', Survival: 'WIS', MagBlock: 'INT'
   };
   const ARMOR = {
     unarmored: { name: 'Unarmored', base: 10, dex: true, cap: null },
@@ -33,13 +34,16 @@
   const ACTIVE_LOCATIONS = new Set(['equipped', 'worn']);
 
   const state = value => value || S.get();
+  const activeClass = value => ClassRegistry?.active(state(value)) || null;
+  const activeClassState = value => ClassRegistry?.state(state(value)) || {};
   const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const unique = values => [...new Set((values || []).filter(Boolean))];
   const signed = value => number(value) >= 0 ? `+${number(value)}` : String(number(value));
-  const level = value => Math.max(1, Math.min(20, number(state(value).character.level, 1)));
+  const level = value => Math.max(1, Math.min(activeClass(value)?.maxLevel || 20, number(state(value).character.level, 1)));
   const pb = value => T.pb(level(value));
   const subclassDefinition = value => {
     const source = state(value);
+    if (source.character.classKey !== 'treasureHunter') return null;
     const choices = source.classes?.treasureHunter?.choices || {};
     if (!choices.subclassConfirmed) return null;
     const selected = String(choices.subclass || '');
@@ -47,7 +51,12 @@
     return definition && level(source) >= definition.minLevel ? definition : null;
   };
   const subclassName = value => subclassDefinition(value)?.name || '';
-  const subclassHasSystem = (system, value) => !!subclassDefinition(value)?.systems?.includes(system);
+  const subclassHasSystem = (system, value) => {
+    const source = state(value), definition = activeClass(source);
+    if (source.character.classKey === 'treasureHunter') return !!subclassDefinition(source)?.systems?.includes(system);
+    if (definition?.systems?.includes(system)) return true;
+    return system === 'relics' && !!definition?.pages?.classSystem;
+  };
   const featureSubclassDefinition = feature => feature?.kind === 'subclass' ? (T.subclassDefinitions || []).find(entry => entry.id === feature.subclassId) || null : null;
   const featureMatchesSubclass = (feature, value) => feature?.kind !== 'subclass' || featureSubclassDefinition(feature)?.id === subclassDefinition(value)?.id;
 
@@ -170,7 +179,7 @@
     const range = ['engaged', 'near', 'far'].includes(context.range) ? context.range : 'near';
     const enemies = context.enemies === 'group' ? 'group' : 'single';
     const goal = ['damage', 'control', 'defence', 'escape'].includes(context.goal) ? context.goal : 'damage';
-    const coolLeft = Math.max(0, T.coolTotal(level(source)) - number(source.classes.treasureHunter.coolUsed));
+    const coolLeft = source.character.classKey === 'treasureHunter' ? Math.max(0, T.coolTotal(level(source)) - number(source.classes.treasureHunter.coolUsed)) : Infinity;
     const hpRatio = hp(source).max ? hp(source).current / hp(source).max : 1;
     const parentIds = new Set((records || []).map(record => record.parentId).filter(Boolean));
     const scored = [];
@@ -462,13 +471,13 @@
 
   function isSaveProficient(abilityKey, value) {
     const source = state(value);
-    return T.saves.includes(abilityKey) || (Origin.backgroundFeat(source) === 'Resilient' && Origin.background(source).resilientAbility === abilityKey);
+    return (activeClass(source)?.saves || []).includes(abilityKey) || (Origin.backgroundFeat(source) === 'Resilient' && Origin.background(source).resilientAbility === abilityKey);
   }
 
   function saveProficiencySources(abilityKey, value) {
     const source = state(value);
     const sources = [];
-    if (T.saves.includes(abilityKey)) sources.push('Treasure Hunter');
+    if ((activeClass(source)?.saves || []).includes(abilityKey)) sources.push(activeClass(source)?.name || 'Class');
     if (Origin.backgroundFeat(source) === 'Resilient' && Origin.background(source).resilientAbility === abilityKey) sources.push(`Resilient · ${Origin.BACKGROUND.name}`);
     return sources;
   }
@@ -537,7 +546,8 @@
     const source = state(value);
     if (source.character.hp.auto === false) return Math.max(1, number(source.character.hp.max, 1));
     const tough = Origin.backgroundFeat(source) === 'Tough' ? 2 * level(source) : 0;
-    return T.hpMax(level(source), mod('CON', source)) + tough;
+    const definition = activeClass(source);
+    return (definition?.hpMax ? definition.hpMax(level(source), mod('CON', source)) : T.hpMax(level(source), mod('CON', source))) + tough;
   }
 
   function hp(value) {
@@ -551,18 +561,23 @@
     if (source.character.hp.auto === false) return { value: hpMax(source), parts: [['Manual Max HP', hpMax(source)]] };
     const characterLevel = level(source);
     const constitution = mod('CON', source);
-    const parts = [['Treasure Hunter Hit Die', `10 + ${Math.max(0, characterLevel - 1)} × 6`], ['CON per level', `${signed(constitution)} × ${characterLevel}`]];
+    const definition = activeClass(source);
+    const hitDie = definition?.hitDie || 'd10';
+    const first = Number(hitDie.slice(1)) || 10;
+    const average = definition?.hitDieAverage || Math.floor(first / 2) + 1;
+    const parts = [[`${definition?.name || 'Class'} Hit Die`, `${first} + ${Math.max(0, characterLevel - 1)} × ${average}`], ['CON per level', `${signed(constitution)} × ${characterLevel}`]];
     if (Origin.backgroundFeat(source) === 'Tough') parts.push([`Tough · ${Origin.BACKGROUND.name}`, `+${2 * characterLevel}`]);
     return { value: hpMax(source), parts };
   }
 
   function hitDice(value) {
     const source = state(value);
-    const spent = Math.max(0, Math.min(level(source), number(source.character.hitDice?.d10?.spent)));
-    return { die: 'd10', total: level(source), spent, available: level(source) - spent };
+    const die = activeClass(source)?.hitDie || 'd10';
+    const spent = Math.max(0, Math.min(level(source), number(source.character.hitDice?.[die]?.spent)));
+    return { die, total: level(source), spent, available: level(source) - spent };
   }
 
-  function choices(value) { return state(value).classes.treasureHunter.choices || {}; }
+  function choices(value) { return activeClassState(value).choices || {}; }
   function classSkillProficiencies(value) { return unique(choices(value).classSkills); }
 
   function skillProficiencySources(name, value) {
@@ -580,11 +595,14 @@
     };
     const manual = Math.max(0, Math.min(2, number(source.character.skills?.[name], 0)));
     if (manual) add('Manual override', manual);
-    if (classSkillProficiencies(source).includes(name)) add('Treasure Hunter');
+    if (classSkillProficiencies(source).includes(name)) add(activeClass(source)?.name || 'Class');
     if ((background.skills || []).includes(name)) add(Origin.BACKGROUND.name);
     if ((speciesChoices.skills || []).includes(name)) add(species?.name || 'Species');
     if (background.feat === 'Skilled' && (background.skilledChoices || []).includes(name)) add('Skilled');
-    if (selected.expertise === name) add('Odborná expertíza', 2);
+    if (source.character.classKey === 'treasureHunter' && selected.expertise === name) add('Odborná expertíza', 2);
+    if (source.character.classKey === 'occultist' && level(source) >= 2 && selected.mysticSkill === name) add('Student mystiky', entries.length ? 2 : 1);
+    if (source.character.classKey === 'occultist' && name === 'MagBlock' && level(source) >= 6) add('Blokování magie');
+    if (source.character.classKey === 'occultist' && name === 'Insight' && number(activeClassState(source).sciences?.astrologie) >= 5) add('Moudrost vesmíru', 2);
     return entries;
   }
 
@@ -686,6 +704,7 @@
       }
       if (grantSource && !entry.sources.includes(grantSource)) entry.sources.push(grantSource);
     };
+    if (source.character.classKey !== 'treasureHunter') return entries;
     if (level(source) >= 1) add('Whip', 'Mistr biče');
     unique(choices(source).weaponMasteries).forEach(weapon => add(weapon, 'Weapon Mastery'));
     return entries;
@@ -706,10 +725,10 @@
       if (!entry) { entry = { name, sources: [] }; result[category].push(entry); }
       if (grantSource && !entry.sources.includes(grantSource)) entry.sources.push(grantSource);
     };
-    (T.armor || []).forEach(name => add('armor', name, 'Treasure Hunter'));
-    (T.weapons || []).forEach(name => add('weapons', name, 'Treasure Hunter'));
-    add('tools', "Thieves' Tools", 'Treasure Hunter');
-    add('tools', "Navigator's Tools", 'Treasure Hunter');
+    const definition = activeClass(source);
+    (definition?.armor || []).forEach(name => add('armor', name, definition.name));
+    (definition?.weapons || []).forEach(name => add('weapons', name, definition.name));
+    (definition?.tools || []).forEach(name => add('tools', name, definition.name));
     (p.armor || []).forEach(name => add('armor', name, result.armor.some(entry => entry.name === name) ? '' : 'Manual'));
     (p.weapons || []).forEach(name => add('weapons', name, result.weapons.some(entry => entry.name === name) ? '' : 'Manual'));
     (p.tools || []).forEach(name => add('tools', name, result.tools.some(entry => entry.name === name) ? '' : 'Manual'));
@@ -720,8 +739,10 @@
     add('tools', background.tool, Origin.BACKGROUND.name);
     add(secondaryIsVehicle ? 'vehicles' : 'tools', background.secondary, Origin.BACKGROUND.name);
     trained.filter(item => !SKILLS[item]).forEach(name => add(Origin.VEHICLES.includes(name) ? 'vehicles' : 'tools', name, 'Skilled'));
-    (classChoices.vehicles || []).forEach(name => add('vehicles', name, 'Řidičský průkaz'));
-    (classChoices.ancientLanguages || []).forEach(name => add('languages', name, 'Starodávné jazyky'));
+    if (source.character.classKey === 'treasureHunter') {
+      (classChoices.vehicles || []).forEach(name => add('vehicles', name, 'Řidičský průkaz'));
+      (classChoices.ancientLanguages || []).forEach(name => add('languages', name, 'Starodávné jazyky'));
+    } else if (source.character.classKey === 'occultist' && level(source) >= 2 && classChoices.mysticLanguage) add('languages', classChoices.mysticLanguage, 'Student mystiky');
     if (Origin.species(source)?.id === 'city_goblin_lukys_campaign') {
       add('senses', 'Darkvision 60 ft.', 'City Goblin · Darkvision');
       add('senses', 'Blindsight 10 ft.', 'City Goblin · Jacobson’s Organ');
@@ -901,6 +922,10 @@
 
   function choiceRequirements(value) {
     const source = state(value);
+    if (source.character.classKey !== 'treasureHunter') {
+      const definition = activeClass(source);
+      return definition?.choiceRequirements ? definition.choiceRequirements(source) : [];
+    }
     const selected = choices(source);
     const missing = [];
     for (const [featureId, definitions] of Object.entries(T.choiceDefinitions || {})) {
@@ -941,8 +966,24 @@
     return records;
   }
 
+  function classDefinition(value) { return activeClass(value); }
+  function classState(value) { return activeClassState(value); }
+  function classFeatures(value) {
+    const source = state(value), definition = activeClass(source);
+    return (definition?.features || []).filter(entry => entry.level <= level(source));
+  }
+  function spellDC(value) {
+    const source = state(value);
+    return 8 + pb(source) + mod('INT', source) + itemDcBonus('spell', source);
+  }
+  function spellAttack(value) {
+    const source = state(value);
+    return pb(source) + mod('INT', source) + itemDcBonus('spell', source);
+  }
+
   window.CharacterDerived = {
-    SKILLS, ARMOR, state, level, pb, subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
+    SKILLS, ARMOR, state, level, pb, classDefinition, classState, classFeatures, spellDC, spellAttack,
+    subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
     ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
     isConsumable, containerLoad, inventoryIssues, tacticalRecommendations,
     walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,

@@ -8,11 +8,15 @@
   const Origin = window.CharacterOrigin;
   const Rules = window.DND2024Rules;
   const GearRules = window.GearRulesV9;
+  const Registry = window.CharacterClassRegistry;
+  const Occultist = window.OccultistDataV10;
   if (!S || !D || !T || !Origin || !Rules) return;
 
   const number = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   const clamp = (value, min, max) => Math.max(min, Math.min(max, number(value, min)));
   const unique = values => [...new Set((values || []).filter(Boolean))];
+  const activeDefinition = value => Registry?.active(value || S.get());
+  const activeState = value => Registry?.state(value || S.get()) || {};
 
   function update(mutator, reason) { return S.update(mutator, reason); }
 
@@ -119,38 +123,52 @@
     };
     const result = { ok: true, kind: long ? 'long' : 'short', healing: 0, rolls: [], hitDiceSpent: 0, hitDiceRecovered: 0 };
     update(state => {
-      const th = state.classes.treasureHunter;
-      if (config.cool) th.coolUsed = 0;
-      if (config.features) {
-        for (const [id] of Object.entries(th.featureUses || {})) {
-          const feature = T.features.find(item => item.id === id);
-          if (feature && (long || feature.recovery === 'SR')) th.featureUses[id] = 0;
+      const definition = activeDefinition(state);
+      const classState = activeState(state);
+      if (state.character.classKey === 'treasureHunter') {
+        const th = state.classes.treasureHunter;
+        if (config.cool) th.coolUsed = 0;
+        if (config.features) {
+          for (const [id] of Object.entries(th.featureUses || {})) {
+            const feature = T.features.find(item => item.id === id);
+            if (feature && (long || feature.recovery === 'SR')) th.featureUses[id] = 0;
+          }
         }
-      }
-      if (config.relics && D.subclassHasSystem('relics', state)) {
-        for (const entry of th.relics || []) {
-          const relic = Relics.find(item => item.id === entry.relicId);
-          if (relic && (long || relic.recovery === 'SR')) entry.used = 0;
+        if (config.relics && D.subclassHasSystem('relics', state)) {
+          for (const entry of th.relics || []) {
+            const relic = Relics.find(item => item.id === entry.relicId);
+            if (relic && (long || relic.recovery === 'SR')) entry.used = 0;
+          }
         }
+      } else if (definition?.id === 'occultist') {
+        for (const resource of definition.resources || []) {
+          if (!definition.resourceUnlocked(resource, classState, D.level(state))) continue;
+          if (long || resource.recovery === 'SR') classState.resources[resource.id] = 0;
+        }
+        if (long) for (const slotLevel of [1, 2, 3]) classState.slotsUsed[slotLevel] = 0;
       }
       if (long) {
         if (config.hp) state.character.hp.current = D.hpMax(state);
         if (config.temp) state.character.hp.temp = 0;
         if (config.exhaustion) state.character.exhaustion = Math.max(0, number(state.character.exhaustion) - 1);
         if (config.recoverHitDice) {
-          const before = number(state.character.hitDice.d10.spent);
-          state.character.hitDice.d10.spent = Math.max(0, before - Math.max(1, Math.ceil(D.level(state) / 2)));
-          result.hitDiceRecovered = before - state.character.hitDice.d10.spent;
+          const dieKey = definition?.hitDie || 'd10';
+          const dice = state.character.hitDice[dieKey] || (state.character.hitDice[dieKey] = { spent: 0 });
+          const before = number(dice.spent);
+          dice.spent = Math.max(0, before - Math.max(1, Math.ceil(D.level(state) / 2)));
+          result.hitDiceRecovered = before - dice.spent;
         }
         state.character.deathSaves = { successes: 0, failures: 0 };
         state.character.origin.background.luckUsed = 0;
       } else if (config.hitDice) {
-        const hitDice = state.character.hitDice.d10;
+        const dieKey = definition?.hitDie || 'd10';
+        const dieSize = Math.max(1, number(String(dieKey).replace('d', ''), 10));
+        const hitDice = state.character.hitDice[dieKey] || (state.character.hitDice[dieKey] = { spent: 0 });
         const available = Math.max(0, D.level(state) - number(hitDice.spent));
         const count = Math.min(available, config.hitDice);
         const con = D.mod('CON', state);
         for (let index = 0; index < count; index += 1) {
-          const die = clamp(config.rolls[index] ?? (1 + Math.floor(Math.random() * 10)), 1, 10);
+          const die = clamp(config.rolls[index] ?? (1 + Math.floor(Math.random() * dieSize)), 1, dieSize);
           const gain = Math.max(1, die + con);
           result.rolls.push({ die, con, gain });
           result.healing += gain;
@@ -322,9 +340,11 @@
     const oldDamage = Math.max(0, oldMax - number(source.character.hp.current));
     update(state => {
       const c = state.character;
+      const definition = activeDefinition(state);
+      const classState = activeState(state);
       const th = state.classes.treasureHunter;
       c.name = String(payload.name || '').trim();
-      c.level = clamp(payload.level, 1, 20);
+      c.level = clamp(payload.level, 1, definition?.maxLevel || 20);
       c.origin.species = String(payload.species || '');
       c.race = c.origin.species;
       const speciesDefinition = Origin.SPECIES.find(species => species.name === c.origin.species || species.id === c.origin.species);
@@ -356,11 +376,16 @@
         const resilient = c.origin.background.feat === 'Resilient' && c.origin.background.resilientAbility === ability ? 1 : 0;
         c.abilities[ability] = clamp(number(payload.abilities?.[ability], 10) - number(bonuses[ability]) - resilient, 1, 30);
       }
-      th.choices.classSkills = takeUnique(payload.classSkills, 3);
-      th.choices.ancientLanguages = unique(payload.ancientLanguages).slice(0, 3);
-      th.choices.vehicles = takeUnique(payload.vehicles, 2);
-      th.choices.expertise = String(payload.expertise || '');
-      th.choices.weaponMasteries = unique(payload.weaponMasteries).filter(name => String(name).toLowerCase() !== 'whip').slice(0, 2);
+      classState.choices.classSkills = takeUnique(payload.classSkills, definition?.skillChoiceCount || 3);
+      if (definition?.id === 'treasureHunter') {
+        th.choices.ancientLanguages = unique(payload.ancientLanguages).slice(0, 3);
+        th.choices.vehicles = takeUnique(payload.vehicles, 2);
+        th.choices.expertise = String(payload.expertise || '');
+        th.choices.weaponMasteries = unique(payload.weaponMasteries).filter(name => String(name).toLowerCase() !== 'whip').slice(0, 2);
+      } else if (definition?.id === 'occultist') {
+        classState.choices.mysticLanguage = String(payload.mysticLanguage || classState.choices.mysticLanguage || '');
+        classState.choices.mysticSkill = String(payload.mysticSkill || classState.choices.mysticSkill || '');
+      }
       if (payload.manualSkills && typeof payload.manualSkills === 'object') {
         for (const skill of Object.keys(D.SKILLS)) delete c.skills[skill];
         for (const [skill, status] of Object.entries(payload.manualSkills)) {
@@ -373,8 +398,105 @@
       const nextMax = D.hpMax(state);
       c.hp.max = nextMax;
       c.hp.current = Math.max(0, Math.min(nextMax, nextMax - oldDamage));
-      th.coolUsed = clamp(th.coolUsed, 0, T.coolTotal(c.level));
+      if (definition?.id === 'treasureHunter') th.coolUsed = clamp(th.coolUsed, 0, T.coolTotal(c.level));
     }, 'builder:save');
+  }
+
+  function setOccultistScience(scienceKey, requestedLevel) {
+    const source = S.get(), definition = activeDefinition(source);
+    if (definition?.id !== 'occultist' || !definition.sciences?.[scienceKey]) return { ok: false, reason: 'class' };
+    const target = clamp(requestedLevel, 0, 5);
+    const tier = target ? definition.scienceLevels[target - 1] : null;
+    if (tier && D.level(source) < tier.requiredLevel) return { ok: false, reason: 'level', requiredLevel: tier.requiredLevel };
+    const preview = S.clone(source.classes.occultist);
+    preview.sciences[scienceKey] = target;
+    const spent = definition.knowledgeSpent(preview), total = definition.progressionAt(D.level(source)).knowledge;
+    if (spent > total) return { ok: false, reason: 'knowledge', spent, total };
+    update(state => { state.classes.occultist.sciences[scienceKey] = target; }, `occultist:science:${scienceKey}`);
+    return { ok: true, spent, total };
+  }
+
+  function setOccultistChoice(key, value) {
+    if (activeDefinition()?.id !== 'occultist') return false;
+    update(state => {
+      const choices = state.classes.occultist.choices;
+      if (Object.hasOwn(choices.scienceChoices, key) || /Cantrip$/.test(key)) choices.scienceChoices[key] = String(value || '');
+      else choices[key] = Array.isArray(value) ? unique(value) : String(value || '');
+    }, `occultist:choice:${key}`);
+    return true;
+  }
+
+  function occultistSpellAvailable(spell, source = S.get()) {
+    const classState = source.classes.occultist;
+    return (!spell.requiredLevel || D.level(source) >= spell.requiredLevel) && (!spell.scienceKey || number(classState.sciences[spell.scienceKey]) >= number(spell.scienceLevel, 1));
+  }
+
+  function toggleOccultistSpell(spellId) {
+    const source = S.get(), definition = activeDefinition(source);
+    const spell = definition?.spells?.find(entry => entry.id === spellId);
+    if (definition?.id !== 'occultist' || !spell || !occultistSpellAvailable(spell, source)) return { ok: false, reason: 'spell' };
+    const current = source.classes.occultist.spells.find(entry => entry.id === spellId);
+    const preparing = !current?.prepared;
+    const limit = definition.progressionAt(D.level(source)).prepared;
+    const prepared = source.classes.occultist.spells.filter(entry => entry.prepared && number(entry.level, definition.spells.find(item => item.id === entry.id)?.level) > 0).length;
+    if (preparing && spell.level > 0 && prepared >= limit) return { ok: false, reason: 'prepared', prepared, limit };
+    update(state => {
+      const list = state.classes.occultist.spells;
+      let entry = list.find(item => item.id === spellId);
+      if (!entry) { entry = { id: spellId, prepared: false }; list.push(entry); }
+      entry.prepared = preparing;
+    }, `occultist:prepare:${spellId}`);
+    return { ok: true, prepared: preparing };
+  }
+
+  function adjustOccultistSlot(slotLevel, delta) {
+    const source = S.get(), definition = activeDefinition(source), level = clamp(slotLevel, 1, 3);
+    if (definition?.id !== 'occultist') return { ok: false, reason: 'class' };
+    const max = definition.progressionAt(D.level(source)).slots[level - 1];
+    update(state => { state.classes.occultist.slotsUsed[level] = clamp(number(state.classes.occultist.slotsUsed[level]) + number(delta), 0, max); }, `occultist:slot:${level}`);
+    return { ok: true, used: S.get().classes.occultist.slotsUsed[level], max };
+  }
+
+  function castOccultistSpell(spellId) {
+    const source = S.get(), definition = activeDefinition(source);
+    const spell = definition?.spells?.find(entry => entry.id === spellId);
+    if (definition?.id !== 'occultist' || !spell || !occultistSpellAvailable(spell, source)) return { ok: false, reason: 'spell' };
+    if (!spell.level) return { ok: true, spell, slot: 0 };
+    const learned = source.classes.occultist.spells.find(entry => entry.id === spellId);
+    if (!learned?.prepared) return { ok: false, reason: 'prepared' };
+    const max = definition.progressionAt(D.level(source)).slots[spell.level - 1] || 0;
+    const used = number(source.classes.occultist.slotsUsed[spell.level]);
+    if (used >= max) return { ok: false, reason: 'slot', slot: spell.level };
+    adjustOccultistSlot(spell.level, 1);
+    return { ok: true, spell, slot: spell.level, remaining: max - used - 1 };
+  }
+
+  function useOccultistResource(resourceId, delta = 1) {
+    const source = S.get(), definition = activeDefinition(source), classState = source.classes.occultist;
+    const resource = definition?.resources?.find(entry => entry.id === resourceId);
+    if (definition?.id !== 'occultist' || !resource || !definition.resourceUnlocked(resource, classState, D.level(source))) return { ok: false, reason: 'resource' };
+    const before = number(classState.resources[resourceId]);
+    const next = clamp(before + number(delta), 0, resource.max);
+    update(state => { state.classes.occultist.resources[resourceId] = next; }, `occultist:resource:${resourceId}`);
+    return { ok: true, used: next, max: resource.max };
+  }
+
+  function completeOccultistDawn() {
+    if (activeDefinition()?.id !== 'occultist') return false;
+    update(state => { state.classes.occultist.lastDawn = new Date().toISOString(); }, 'occultist:dawn');
+    return true;
+  }
+
+  function restoreOccultistSlotWithHp(slotLevel, hpCost) {
+    const source = S.get(), definition = activeDefinition(source), level = clamp(slotLevel, 1, 3), cost = Math.max(1, Math.floor(number(hpCost)));
+    if (definition?.id !== 'occultist') return { ok: false, reason: 'class' };
+    if (number(source.character.hp.current) <= cost) return { ok: false, reason: 'hp' };
+    if (number(source.classes.occultist.slotsUsed[level]) <= 0) return { ok: false, reason: 'slot-full' };
+    update(state => {
+      state.character.hp.current -= cost;
+      state.classes.occultist.slotsUsed[level] = Math.max(0, number(state.classes.occultist.slotsUsed[level]) - 1);
+    }, `occultist:energy:${level}`);
+    return { ok: true, hp: S.get().character.hp.current, slot: level };
   }
 
   function saveQuickCharacter(payload) {
@@ -383,7 +505,7 @@
     update(state => {
       const c = state.character;
       c.name = String(payload.name || '').trim();
-      c.level = clamp(payload.level, 1, 20);
+      c.level = clamp(payload.level, 1, activeDefinition(state)?.maxLevel || 20);
       c.portrait = payload.portrait ?? c.portrait;
       c.hp.auto = payload.hpAuto !== false;
       c.acMode = payload.acMode === 'manual' ? 'manual' : 'auto';
@@ -661,22 +783,24 @@
   function levelUp(targetLevel, selections = {}) {
     const source = S.get();
     const current = D.level(source);
-    const target = clamp(targetLevel, 1, 20);
-    if (target !== current + 1) return { ok: false, reason: current >= 20 ? 'maximum' : 'next-level', current, target };
+    const definition = activeDefinition(source);
+    const target = clamp(targetLevel, 1, definition?.maxLevel || 20);
+    if (target !== current + 1) return { ok: false, reason: current >= (definition?.maxLevel || 20) ? 'maximum' : 'next-level', current, target };
     const oldMax = D.hpMax(source);
     const oldDamage = Math.max(0, oldMax - number(source.character.hp.current));
     update(state => {
-      const choices = state.classes.treasureHunter.choices;
+      const classState = activeState(state);
+      const choices = classState.choices || (classState.choices = {});
       for (const [key, raw] of Object.entries(selections || {})) {
         const value = Array.isArray(raw) ? raw.map(entry => String(entry || '')) : String(raw || '');
         choices[key] = value;
-        if (key === 'subclass') choices.subclassConfirmed = !!value;
+        if (definition?.id === 'treasureHunter' && key === 'subclass') choices.subclassConfirmed = !!value;
       }
       state.character.level = target;
       const nextMax = D.hpMax(state);
       state.character.hp.max = nextMax;
       state.character.hp.current = Math.max(0, Math.min(nextMax, nextMax - oldDamage));
-      state.classes.treasureHunter.coolUsed = clamp(state.classes.treasureHunter.coolUsed, 0, T.coolTotal(target));
+      if (definition?.id === 'treasureHunter') state.classes.treasureHunter.coolUsed = clamp(state.classes.treasureHunter.coolUsed, 0, T.coolTotal(target));
     }, `level-up:${current}:${target}`);
     return { ok: true, from: current, to: target, hpMax: D.hpMax(S.get()), missing: D.choiceRequirements(S.get()) };
   }
@@ -941,6 +1065,7 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
+    setOccultistScience, setOccultistChoice, toggleOccultistSpell, adjustOccultistSlot, castOccultistSpell, useOccultistResource, completeOccultistDawn, restoreOccultistSlotWithHp,
     addItem, updateItem, moveItem, setItemEquipped, removeItem, useConsumable, saveLoadout, applyLoadout, deleteLoadout, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
     setMoney, adjustMoney, adjustCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveJournalEntry, deleteJournalEntry, toggleJournalFavorite, saveBio, setUi

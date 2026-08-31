@@ -20,9 +20,11 @@ jobs:
             js/classes/treasure-hunter/relics-v7s.js \
             js/classes/treasure-hunter/choices-v7s.js \
             js/classes/treasure-hunter/content-v9.js \
+            js/classes/class-registry-v10.js js/classes/treasure-hunter/register-v10.js \
+            js/classes/occultist/data-v10.js js/classes/occultist/import-v10.js \
             js/core/gear-rules-v9.js js/core/state-v9.js js/core/rules-2024.js js/core/origin-v9.js \
             js/core/derived-v9.js js/core/commands-v9.js js/core/roster-v9.js \
-            js/core/catalog-srd.js js/ui/portrait-cropper.js js/ui/app-v9.js service-worker.js
+            js/core/catalog-srd.js js/ui/portrait-cropper.js js/ui/app-v9.js js/ui/occultist-v10.js service-worker.js
           do
             node --check "$file"
           done
@@ -37,14 +39,15 @@ jobs:
           grep -q 'js/core/state-v9.js' index.html
           grep -q 'js/core/commands-v9.js' index.html
           grep -q 'js/ui/app-v9.js' index.html
+          grep -q 'js/ui/occultist-v10.js' index.html
           grep -q 'css/v9.css' index.html
           ! grep -q 'js/ui/gameplay-polish-v7s.js' index.html
           ! grep -q 'js/ui/modular-enhancements.js' index.html
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v9-ux-19' service-worker.js
-          grep -q "service-worker.js?v=9.10.1" index.html
+          grep -q 'character-sheet-v10-multiclass-1' service-worker.js
+          grep -q "service-worker.js?v=10.0.0" index.html
           test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 8
           grep -q 'id="bioPage"' index.html
           grep -q 'id="builderBtn"' index.html
