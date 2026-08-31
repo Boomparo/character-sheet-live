@@ -820,6 +820,7 @@
       const target = visiblePages().some(page => page.id === requested) ? requested : 'featuresPage';
       setPage(target, false, target !== requested);
     }); else updatePageChrome();
+    window.CharacterOccultistUIV10?.render?.();
   }
 
   function visiblePages(source = state()) {

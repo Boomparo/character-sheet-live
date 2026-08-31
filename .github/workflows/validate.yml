@@ -46,8 +46,8 @@ jobs:
           ! grep -q 'MutationObserver' js/ui/app-v9.js
           ! grep -q 'stopImmediatePropagation' js/ui/app-v9.js
           grep -q 'scroll-snap-type:x mandatory' css/v7s.css
-          grep -q 'character-sheet-v10-homebrew-spells-1' service-worker.js
-          grep -q "service-worker.js?v=10.1.0" index.html
+          grep -q 'character-sheet-v10-homebrew-spells-2' service-worker.js
+          grep -q "service-worker.js?v=10.1.1" index.html
           test "$(grep -o 'class="sheet-page"' index.html | wc -l)" -eq 9
           grep -q 'id="spellsPage"' index.html
           grep -q 'id="bioPage"' index.html

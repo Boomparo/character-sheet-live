@@ -55,7 +55,7 @@ const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 const Homebrew = global.CharacterHomebrewLibrary;
 
-assert.equal(S.APP_VERSION, '10.1.0-homebrew-spells');
+assert.equal(S.APP_VERSION, '10.1.1-homebrew-spells');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -781,7 +781,7 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /value="" placeholder="\+ \/ −"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=10\.1\.0/);
+  assert.match(index, /service-worker\.js\?v=10\.1\.1/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 9);
   assert.match(index, /id="spellsPage"/);
@@ -833,8 +833,8 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /grid-template-columns:218px minmax\(0,1fr\)/, 'desktop uses a persistent navigation rail');
   assert.match(app, /class="page-dot"[^>]+><span>\$\{page\.title\}<\/span>/, 'desktop navigation exposes readable page labels');
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v10-homebrew-spells-1/);
-  assert.match(worker, /app-v9\.js\?v=10\.1\.0/);
+  assert.match(worker, /character-sheet-v10-homebrew-spells-2/);
+  assert.match(worker, /app-v9\.js\?v=10\.1\.1/);
 });
 
 test('class registry keeps Treasure Hunter and Occultist state independent', () => {
