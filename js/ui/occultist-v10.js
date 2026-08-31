@@ -150,17 +150,6 @@
 
   function render() {
     if (!active()) return;
-    if (button.hasAttribute('data-spell-library-open')) { ensureOccultistDialogs(); $('#spellLibraryDialog').showModal(); renderSpellCatalog(); return; }
-    if (button.hasAttribute('data-homebrew-spell-new')) { $('#spellLibraryDialog')?.close(); $('#homebrewSpellForm').reset(); $('#hbSpellSchool').value='Universal'; $('#hbSpellTime').value='Action'; $('#hbSpellRange').value='Self'; $('#hbSpellDuration').value='Instantaneous'; $('#homebrewSpellDialog').showModal(); return; }
-    if (button.dataset.addSpell) { SpellCatalog.get(button.dataset.addSpell).then(spell=>{ const result=C.learnOccultistSpell(spell); if(result.ok){toast(`${spell.name} added to the spellbook.`);renderSpellCatalog();} else toast('That spell is already known.','warn'); }); return; }
-    if (button.dataset.occultForget) { C.forgetOccultistSpell(button.dataset.occultForget); toast('Spell removed from this character.'); return; }
-    if (button.dataset.spellView) { ui.spellView=button.dataset.spellView; renderSpells(S.get()); return; }
-    if (button.dataset.potionExclude) { const roll=Number(button.dataset.potionExclude); ui.experimentExcluded.has(roll)?ui.experimentExcluded.delete(roll):ui.experimentExcluded.add(roll); if(ui.experimentExcluded.size>=6)ui.experimentExcluded.delete(roll); renderSciences(S.get()); return; }
-    if (button.hasAttribute('data-occult-experiment')) { const result=C.craftOccultistExperiment([...ui.experimentExcluded]); if(result.ok){ui.experimentExcluded.clear();toast(`${result.result.name} brewed · ${result.hpCost} HP spent.`);}else toast(result.reason==='hp'?'Not enough HP for the excluded results.':'Experiment is unavailable.','warn'); return; }
-    if (button.hasAttribute('data-new-potion-recipe')) { ensureOccultistDialogs(); $('#potionRecipeForm').reset(); $('#potionRecipeTime').value=60; $('#potionRecipeCost').value=0; $('#potionRecipeYield').value=1; $('#potionRecipeDialog').showModal(); return; }
-    if (button.dataset.potionStart) { const recipe=Homebrew?.potionRecipes().find(entry=>entry.libraryId===button.dataset.potionStart); const result=C.startPotionProject(recipe,recipe?.quantity||1); toast(result.ok?`${recipe.name} batch started.`:'Recipe could not be started.',result.ok?'':'warn'); return; }
-    if (button.dataset.potionProgress) { const result=C.progressPotionProject(button.dataset.potionProgress,button.dataset.minutes); if(result.ok)toast(result.complete?'Potion finished and added to Gear.':'Brewing time recorded.'); return; }
-    if (button.dataset.potionCancel) { C.cancelPotionProject(button.dataset.potionCancel); toast('Potion batch cancelled.'); return; }
     const source = S.get();
     patchHudAndPages(source); patchCharacter(source); renderActions(source); renderFeatures(source); renderSciences(source); renderSpells(source);
   }
@@ -223,6 +212,17 @@
     if (button.hasAttribute('data-roster-new')) { event.preventDefault(); event.stopPropagation(); ensureClassDialog(); $('#newCharacterName').value = 'New Character'; $('#classCreateDialog').showModal(); return; }
     if (button.dataset.createClass) { event.preventDefault(); const name = $('#newCharacterName').value.trim() || 'New Character'; $('#classCreateDialog').close(); $('#charactersDialog')?.close(); Roster.create(name, button.dataset.createClass); toast(`${name} created.`); return; }
     if (!active()) return;
+    if (button.hasAttribute('data-spell-library-open')) { ensureOccultistDialogs(); $('#spellLibraryDialog').showModal(); renderSpellCatalog(); return; }
+    if (button.hasAttribute('data-homebrew-spell-new')) { $('#spellLibraryDialog')?.close(); $('#homebrewSpellForm').reset(); $('#hbSpellSchool').value='Universal'; $('#hbSpellTime').value='Action'; $('#hbSpellRange').value='Self'; $('#hbSpellDuration').value='Instantaneous'; $('#homebrewSpellDialog').showModal(); return; }
+    if (button.dataset.addSpell) { SpellCatalog.get(button.dataset.addSpell).then(spell=>{ const result=C.learnOccultistSpell(spell); if(result.ok){toast(`${spell.name} added to the spellbook.`);renderSpellCatalog();} else toast('That spell is already known.','warn'); }); return; }
+    if (button.dataset.occultForget) { C.forgetOccultistSpell(button.dataset.occultForget); toast('Spell removed from this character.'); return; }
+    if (button.dataset.spellView) { ui.spellView=button.dataset.spellView; renderSpells(S.get()); return; }
+    if (button.dataset.potionExclude) { const roll=Number(button.dataset.potionExclude); ui.experimentExcluded.has(roll)?ui.experimentExcluded.delete(roll):ui.experimentExcluded.add(roll); if(ui.experimentExcluded.size>=6)ui.experimentExcluded.delete(roll); renderSciences(S.get()); return; }
+    if (button.hasAttribute('data-occult-experiment')) { const result=C.craftOccultistExperiment([...ui.experimentExcluded]); if(result.ok){ui.experimentExcluded.clear();toast(`${result.result.name} brewed · ${result.hpCost} HP spent.`);}else toast(result.reason==='hp'?'Not enough HP for the excluded results.':'Experiment is unavailable.','warn'); return; }
+    if (button.hasAttribute('data-new-potion-recipe')) { ensureOccultistDialogs(); $('#potionRecipeForm').reset(); $('#potionRecipeTime').value=60; $('#potionRecipeCost').value=0; $('#potionRecipeYield').value=1; $('#potionRecipeDialog').showModal(); return; }
+    if (button.dataset.potionStart) { const recipe=Homebrew?.potionRecipes().find(entry=>entry.libraryId===button.dataset.potionStart); const result=C.startPotionProject(recipe,recipe?.quantity||1); toast(result.ok?`${recipe.name} batch started.`:'Recipe could not be started.',result.ok?'':'warn'); return; }
+    if (button.dataset.potionProgress) { const result=C.progressPotionProject(button.dataset.potionProgress,button.dataset.minutes); if(result.ok)toast(result.complete?'Potion finished and added to Gear.':'Brewing time recorded.'); return; }
+    if (button.dataset.potionCancel) { C.cancelPotionProject(button.dataset.potionCancel); toast('Potion batch cancelled.'); return; }
     if (button.id === 'builderBtn' || button.hasAttribute('data-open-builder') || button.dataset.builderTab === 'setup') setTimeout(renderBuilder);
     if (button.hasAttribute('data-level-up-open')) { event.preventDefault(); event.stopPropagation(); renderLevelUp(); return; }
     if (button.dataset.occultLevelFinish) { const selections = {}; if ($('#levelMysticLanguage')) selections.mysticLanguage = $('#levelMysticLanguage').value; if ($('#levelMysticSkill')) selections.mysticSkill = $('#levelMysticSkill').value; const result = C.levelUp(button.dataset.occultLevelFinish,selections); if (result.ok) { $('#levelUpDialog').close(); toast(`Occultist level ${result.to} applied.`); } return; }
