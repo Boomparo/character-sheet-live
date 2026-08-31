@@ -168,7 +168,7 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
     if (button.hasAttribute('data-roster-new')) { event.preventDefault(); event.stopPropagation(); ensureClassDialog(); $('#newCharacterName').value = 'New Character'; $('#classCreateDialog').showModal(); return; }
-    if (button.dataset.createClass) { event.preventDefault(); const name = $('#newCharacterName').value.trim() || 'New Character'; $('#classCreateDialog').close(); Roster.create(name, button.dataset.createClass); toast(`${name} created.`); return; }
+    if (button.dataset.createClass) { event.preventDefault(); const name = $('#newCharacterName').value.trim() || 'New Character'; $('#classCreateDialog').close(); $('#charactersDialog')?.close(); Roster.create(name, button.dataset.createClass); toast(`${name} created.`); return; }
     if (!active()) return;
     if (button.id === 'builderBtn' || button.hasAttribute('data-open-builder') || button.dataset.builderTab === 'setup') setTimeout(renderBuilder);
     if (button.hasAttribute('data-level-up-open')) { event.preventDefault(); event.stopPropagation(); renderLevelUp(); return; }
