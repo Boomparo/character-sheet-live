@@ -1523,7 +1523,7 @@
   function openImport() {
     $('#importText').value = '';
     $('#importFile').value = '';
-    $('#importReport').textContent = 'Paste JSON or choose a file.';
+    $('#importReport').textContent = 'Every import adds new characters, including roster files. Existing characters are never replaced.';
     showDialog('#importDialog');
   }
 
@@ -1995,10 +1995,17 @@
       return;
     }
 
-    if (button.hasAttribute('data-roster-new')) { Roster?.create(); closeDialog('#charactersDialog'); toast('New character created.'); return; }
-    if (button.dataset.rosterSwitch) { Roster?.switchTo(button.dataset.rosterSwitch); closeDialog('#charactersDialog'); return; }
-    if (button.dataset.rosterDuplicate) { Roster?.duplicate(button.dataset.rosterDuplicate); closeDialog('#charactersDialog'); toast('Character duplicated.'); return; }
-    if (button.dataset.rosterDelete) { if (confirm('Delete this character?')) { Roster?.remove(button.dataset.rosterDelete); renderRoster(); } return; }
+    if (button.hasAttribute('data-roster-new') || button.dataset.rosterSwitch || button.dataset.rosterDuplicate || button.dataset.rosterDelete) {
+      try {
+        if (button.hasAttribute('data-roster-new')) { Roster.create(); closeDialog('#charactersDialog'); toast('New character created.'); }
+        else if (button.dataset.rosterSwitch) { if (!Roster.switchTo(button.dataset.rosterSwitch)) throw new Error('Character not found.'); closeDialog('#charactersDialog'); }
+        else if (button.dataset.rosterDuplicate) {
+          if (!Roster.duplicate(button.dataset.rosterDuplicate)) throw new Error('Character could not be copied.');
+          renderRoster(); toast('New independent copy created. Original character kept.');
+        } else if (confirm('Delete this character?')) { Roster.remove(button.dataset.rosterDelete); renderRoster(); }
+      } catch (error) { toast(error.message, 'warn'); }
+      return;
+    }
     if (button.dataset.searchResult != null) { focusSearchResult(local.searchResults[Number(button.dataset.searchResult)]); return; }
   }
 

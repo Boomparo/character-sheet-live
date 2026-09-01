@@ -18,7 +18,15 @@ Existing `character-sheet-v7s` and `character-sheet-v7s-roster` localStorage val
 ## Validation
 
 ```sh
-node --test tests/v9-domain.test.js
+node --test tests/*.test.js
 ```
 
 The test suite covers migrations, HP defense order, automatic AC, locked roll modes, shared relic charges, origin mechanics, source names and the loaded-script architecture.
+
+## 10.1.3 patch notes
+
+- Duplicate creates a separate character and leaves both entries visible in the roster.
+- All JSON imports append new profiles with new IDs, including complete roster backups and repeated imports.
+- Failed storage writes abort duplication/import without changing the active character. Backups remain available when storage is full.
+- Each open tab saves to its own character ID. Portraits are no longer stored twice inside each new roster entry.
+- Regression tests cover profile isolation, reloads, imported ID collisions, full storage and multiple tabs.

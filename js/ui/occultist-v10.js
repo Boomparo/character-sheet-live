@@ -210,7 +210,13 @@
   document.addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
     if (button.hasAttribute('data-roster-new')) { event.preventDefault(); event.stopPropagation(); ensureClassDialog(); $('#newCharacterName').value = 'New Character'; $('#classCreateDialog').showModal(); return; }
-    if (button.dataset.createClass) { event.preventDefault(); const name = $('#newCharacterName').value.trim() || 'New Character'; $('#classCreateDialog').close(); $('#charactersDialog')?.close(); Roster.create(name, button.dataset.createClass); toast(`${name} created.`); return; }
+    if (button.dataset.createClass) {
+      event.preventDefault();
+      const name = $('#newCharacterName').value.trim() || 'New Character';
+      try { Roster.create(name, button.dataset.createClass); $('#classCreateDialog').close(); $('#charactersDialog')?.close(); toast(`${name} created.`); }
+      catch (error) { toast(error.message, 'warn'); }
+      return;
+    }
     if (!active()) return;
     if (button.hasAttribute('data-spell-library-open')) { ensureOccultistDialogs(); $('#spellLibraryDialog').showModal(); renderSpellCatalog(); return; }
     if (button.hasAttribute('data-homebrew-spell-new')) { $('#spellLibraryDialog')?.close(); $('#homebrewSpellForm').reset(); $('#hbSpellSchool').value='Universal'; $('#hbSpellTime').value='Action'; $('#hbSpellRange').value='Self'; $('#hbSpellDuration').value='Instantaneous'; $('#homebrewSpellDialog').showModal(); return; }

@@ -6,7 +6,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 20;
-  const APP_VERSION = '10.1.2-homebrew-spells';
+  const APP_VERSION = '10.1.3-safe-profiles';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -578,12 +578,17 @@
     return state;
   }
 
-  function replace(next, reason = 'replace') {
+  function replace(next, reason = 'replace', options = {}) {
+    const replacement = normalize(next || {}, { skipAbilityMigration: Number(next?.schemaVersion) >= SCHEMA_VERSION });
+    // Profile switches must be durable before changing memory, history or notifying UI.
+    if (options.persist && !writeStorage(KEY, replacement)) {
+      throw new Error('Character could not be saved. Browser storage may be full. Export a backup before freeing space.');
+    }
     if (/^roster:/.test(String(reason || ''))) clearHistory();
     const before = shouldTrack(reason) ? clone(state) : null;
-    state = normalize(next || {}, { skipAbilityMigration: Number(next?.schemaVersion) >= SCHEMA_VERSION });
+    state = replacement;
     if (before && JSON.stringify(before) !== JSON.stringify(state)) recordUndo(before, reason);
-    save();
+    if (options.persist) { clearTimeout(timer); timer = 0; } else save();
     notify(reason);
     return state;
   }
