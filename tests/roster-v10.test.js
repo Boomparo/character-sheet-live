@@ -177,3 +177,12 @@ test('Generated profile IDs cannot collide with existing IDs', () => {
   const first = R.duplicate(id), second = R.duplicate(id);
   assert.equal(new Set([id, first, second]).size, 3);
 });
+
+test('Every import refreshes the open roster so the new profile is immediately visible', () => {
+  const source = fs.readFileSync(path.join(root, 'js/ui/app-v9.js'), 'utf8');
+  const applyImport = source.slice(source.indexOf('function applyImportText'), source.indexOf('function openImport'));
+  assert.match(applyImport, /Roster\?\.importAll/);
+  assert.match(applyImport, /Roster\?\.importCharacter/);
+  assert.match(applyImport, /if \(\$\('#charactersDialog'\)\?\.open\) renderRoster\(\)/);
+  assert.doesNotMatch(applyImport, /S\.replace/);
+});

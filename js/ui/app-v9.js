@@ -1517,6 +1517,7 @@
     } else {
       if (!Roster?.importCharacter?.(parsed.data, parsed.data.character?.name || 'Imported Character')) throw new Error('Character could not be added to the roster.');
     }
+    if ($('#charactersDialog')?.open) renderRoster();
     return parsed.kind;
   }
 
