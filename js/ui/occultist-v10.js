@@ -7,7 +7,7 @@
 
   const $ = selector => document.querySelector(selector);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
-  const nl = value => esc(value).replace(/\n/g, '<br>');
+  const nl = value => esc(window.CharacterRulesHelp.text(value)).replace(/\n/g, '<br>');
   const signed = value => Number(value) >= 0 ? `+${Number(value)}` : String(Number(value));
   const active = () => S.get().character.classKey === 'occultist';
   const toast = (message, kind = '') => {
@@ -19,21 +19,12 @@
   const actionCode = value => ({ action: 'A', bonus: 'BA', reaction: 'R', other: 'OTHER' }[actionKey(value)]);
   const progress = source => O.progressionAt(D.level(source));
   const classState = source => source.classes.occultist;
-  const spellEntry = (spell, source) => classState(source).spells.find(entry => (entry.id || entry.libraryId) === spell.id);
-  const spellAvailable = (spell, source) => (!spell.requiredLevel || D.level(source) >= spell.requiredLevel) && (!spell.scienceKey || Number(classState(source).sciences[spell.scienceKey]) >= Number(spell.scienceLevel || 1));
-  const selectedCantrip = (spell, source) => {
-    if (spell.level || !spell.scienceKey) return true;
-    const choices = O.scienceChoices?.[spell.scienceKey] || [];
-    const definition = choices.find(choice => choice.options.includes(spell.id));
-    return !definition || classState(source).choices.scienceChoices?.[definition.key] === spell.id;
-  };
-  const ui = { spellQuery:'', spellLevel:'all', spellSchool:'all', spellView:'known', catalogQuery:'', experimentExcluded:new Set() };
-  const knownSpells = source => {
-    const byId = new Map(O.spells.filter(spell => spellAvailable(spell, source) && selectedCantrip(spell, source)).map(spell => [spell.id, spell]));
-    for (const entry of classState(source).spells) if (entry.added && entry.definition) byId.set(entry.id, { ...entry.definition, id:entry.id });
-    return [...byId.values()];
-  };
-  const preparedCount = source => classState(source).spells.filter(entry => entry.prepared && Number(entry.definition?.level ?? O.spells.find(spell => spell.id === entry.id)?.level) > 0).length;
+  const Spells = window.CharacterOccultistSpells;
+  const spellEntry = Spells.entry;
+  const knownSpells = Spells.known;
+  const preparedCount = Spells.preparedCount;
+  const experimentExcluded = source => new Set(source.ui.experimentExcluded || []);
+  const spellUi = source => ({ spellQuery:'', spellLevel:'all', spellSchool:'all', spellView:'known', ...source.ui });
   const slots = source => progress(source).slots.map((max, index) => ({ level: index + 1, max, used: Number(classState(source).slotsUsed[index + 1]) || 0 }));
 
   function resourceBar(source) {
@@ -60,11 +51,12 @@
     const records = [];
     D.weaponAttacks(source).forEach(weapon => {
       const ammunition = weapon.ammunitionType ? D.ammunitionSummaryForWeapon(weapon, source) : null;
-      records.push({ id: `weapon:${weapon.id}`, weaponId: weapon.id, name: weapon.name, action: 'Action', group: 'Weapons', source: 'Weapon', hit: signed(weapon.hit), damage: weapon.damage, summary: [weapon.rangeText, weapon.propertiesText, weapon.mastery ? `Mastery: ${weapon.mastery}` : ''].filter(Boolean).join(' · '), ammunition });
+      records.push({ id: `weapon:${weapon.id}`, weaponId: weapon.id, name: weapon.name, action: 'Action', group: 'Weapons', source: 'Weapon', hit: signed(weapon.hit), damage: weapon.damage, rangeText:weapon.rangeText, damageType:weapon.damageType, properties:weapon.properties, raw:weapon.raw, summary: [weapon.rangeText, weapon.propertiesText, weapon.mastery ? `Mastery: ${weapon.mastery}` : ''].filter(Boolean).join(' · '), ammunition });
     });
     for (const spell of knownSpells(source)) {
+      if (!Spells.castStatus(spell, source).ok) continue;
       const override = spellEntry(spell, source) || {};
-      records.push({ ...spell, ...override, id: `spell:${spell.id}`, spellId: spell.id, group: 'Spells', action: spell.time, source: spell.science, summary: override.note || override.desc || spell.desc, prepared: spell.level === 0 || !!override.prepared });
+      records.push({ ...spell, ...override, id: `spell:${spell.id}`, spellId: spell.id, group: 'Spells', isAttack:/attack|save/i.test(`${spell.attack || ''} ${spell.desc || ''}`), action: spell.time, source: spell.science, summary: override.note || override.desc || spell.desc, prepared: Spells.prepared(spell, source) });
     }
     for (const action of O.actions.filter(entry => entry.level <= D.level(source))) records.push({ ...action, group: 'Occultist', source: `Occultist ${action.level}` });
     for (const action of [
@@ -72,6 +64,8 @@
       ['core-dodge','Dodge','Action','Attack rolls against you have Disadvantage and you gain Advantage on Dexterity saves.'],['core-help','Help','Action','Assist another creature.'],
       ['core-hide','Hide','Action','Make a Dexterity (Stealth) check while sufficiently concealed.'],['core-ready','Ready','Action','Prepare an action or movement for a trigger.']
     ]) records.push({ id: action[0], name: action[1], action: action[2], summary: action[3], group: 'Core', source: 'Core' });
+    records.push(...D.itemActions(source), ...D.originActions(source));
+    for (const action of source.character.customActions || []) records.push({ ...action, group:action.group || 'Custom', source:action.source || 'Custom' });
     return records;
   }
 
@@ -85,7 +79,7 @@
       const resource = record.resourceId ? O.resources.find(entry => entry.id === record.resourceId) : null;
       const used = resource ? Number(classState(source).resources[resource.id]) || 0 : 0;
       const button = record.weaponId ? (record.ammunition ? `<button type="button" class="action-ammo-spend" data-occult-weapon="${esc(record.weaponId)}" ${record.ammunition.total ? '' : 'disabled'}><b>${record.ammunition.total}</b><span>${record.ammunition.total ? 'ATTACK · −1' : 'EMPTY'}</span><small>${esc(record.ammunition.type)}</small></button>` : `<button type="button" class="small-btn primary" data-occult-weapon="${esc(record.weaponId)}">ATTACK</button>`) : record.spellId ? `<button type="button" class="small-btn primary" data-occult-cast="${esc(record.spellId)}" ${record.prepared && (!slot || slot.used < slot.max) ? '' : 'disabled'}>${record.level ? `CAST · L${record.level}` : 'CAST'}</button>` : resource ? `<button type="button" class="small-btn primary" data-occult-resource="${esc(resource.id)}" ${used < resource.max ? '' : 'disabled'}>USE · ${Math.max(0, resource.max - used)}/${resource.max}</button>` : '';
-      return `<article class="row-card action-row open"><div class="row-main-wrap"><div class="row-main occult-action-main"><span><strong>${esc(record.name)}</strong><span class="row-meta"><span class="badge ${actionKey(record.action)}">${actionCode(record.action)}</span><span>${esc(record.source || '')}</span>${record.ammunition ? `<span>AMMO · ${esc(record.ammunition.type)}</span>` : ''}</span></span><span class="action-numbers">${record.hit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.damage)}</b>` : ''}</span></div>${button}</div><div class="row-detail"><div class="action-summary">${nl(record.summary || record.desc || '')}</div>${record.attack ? `<small>${esc(record.attack)} · ${esc(record.range || '')}</small>` : ''}</div></article>`;
+      return `<article class="row-card action-row occult-action-row open"><div class="row-main-wrap"><div class="row-main occult-action-main"><span><strong>${esc(record.name)}</strong><span class="row-meta"><span class="badge ${actionKey(record.action)}">${actionCode(record.action)}</span><span>${esc(record.source || '')}</span>${record.rangeText || record.range ? `<span class="attack-range">RANGE ${esc(record.rangeText || record.range)}</span>` : ''}${record.damageType ? `<span class="attack-type">${esc(record.damageType)}</span>` : ''}${record.ammunition ? `<span>AMMO · ${esc(record.ammunition.type)}</span>` : ''}</span></span><span class="action-numbers">${record.hit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.damage)}</b>` : ''}</span></div>${button}</div><div class="row-detail">${record.weaponId ? window.CharacterWeaponTags(record) : ''}<div class="action-summary">${nl(record.summary || record.desc || '')}</div>${record.attack ? `<small>${esc(record.attack)} · ${esc(record.range || '')}</small>` : ''}</div></article>`;
     }).join('') || '<div class="empty">No actions match this filter.</div>';
     page.innerHTML = `<div class="page-intro"><div><span class="eyebrow">PLAY</span><h1>ACTIONS</h1><p>Weapons, spells and Occultist abilities</p></div></div><div class="actions-resource-bar occult-action-resource"><div class="occ-slot-grid">${resourceBar(source)}</div><button type="button" class="tactics-open" data-tactics-open title="Next Move">✦</button></div><div class="action-filter-bar">${filters}</div><div class="action-groups"><section class="action-group"><div class="list">${cards}</div><button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button></section></div>`;
   }
@@ -118,26 +112,28 @@
 
   function spellDefinition(spell, source) { return spellEntry(spell, source)?.definition || spell; }
   function renderSpellCard(spell, source) {
-    const definition=spellDefinition(spell,source), entry=spellEntry(spell,source), prepared=!definition.level || !!entry?.prepared;
-    return `<details class="spell-row ${prepared?'prepared':''}"><summary><span class="spell-prepared-mark">${prepared?'◆':'◇'}</span><span class="spell-name"><small>${definition.level?`LEVEL ${definition.level}`:'CANTRIP'} · ${esc(definition.school||'Universal')}</small><b>${esc(definition.name)}</b></span><span class="spell-quick"><b>${esc(definition.time||'Action')}</b><small>${esc(definition.range||'Self')}</small></span></summary><div class="spell-detail"><div class="spell-facts"><span><small>COMPONENTS</small><b>${esc(definition.components||'—')}</b></span><span><small>DURATION</small><b>${esc(definition.duration||'Instantaneous')}</b></span><span><small>ATTACK / SAVE</small><b>${esc(definition.attack||'—')}</b></span>${definition.damage?`<span><small>DAMAGE</small><b>${esc(definition.damage)}</b></span>`:''}</div><p>${nl(definition.fullText||definition.desc||'No rules text supplied.')}</p>${definition.upcast?`<p class="spell-upcast"><b>At Higher Levels.</b> ${nl(definition.upcast)}</p>`:''}<div class="spell-actions">${definition.level?`<button type="button" class="small-btn ${prepared?'primary':''}" data-occult-prepare="${esc(definition.id)}">${prepared?'PREPARED':'PREPARE'}</button>`:'<span class="chip brass">CANTRIP</span>'}<button type="button" class="small-btn primary" data-occult-cast="${esc(definition.id)}" ${prepared?'':'disabled'}>CAST</button>${entry?.added?`<button type="button" class="small-btn ghost" data-occult-forget="${esc(definition.id)}">REMOVE</button>`:''}<small>${esc(definition.source||'Occultist')}</small></div></div></details>`;
+    const definition=spellDefinition(spell,source), entry=spellEntry(spell,source), prepared=Spells.prepared(definition,source), castable=Spells.castStatus(definition,source).ok;
+    return `<details class="spell-row ${prepared?'prepared':''}"><summary><span class="spell-prepared-mark">${prepared?'◆':'◇'}</span><span class="spell-name"><small>${definition.level?`LEVEL ${definition.level}`:'CANTRIP'} · ${esc(definition.school||'Universal')}</small><b>${esc(definition.name)}</b></span><span class="spell-quick"><b>${esc(definition.time||'Action')}</b><small>${esc(definition.range||'Self')}</small></span></summary><div class="spell-detail"><div class="spell-facts"><span><small>COMPONENTS</small><b>${esc(definition.components||'—')}</b></span><span><small>DURATION</small><b>${esc(definition.duration||'Instantaneous')}</b></span><span><small>ATTACK / SAVE</small><b>${esc(definition.attack||'—')}</b></span>${definition.damage?`<span><small>DAMAGE</small><b>${esc(definition.damage)}</b></span>`:''}</div><p>${nl(definition.fullText||definition.desc||'No rules text supplied.')}</p>${definition.upcast?`<p class="spell-upcast"><b>At Higher Levels.</b> ${nl(definition.upcast)}</p>`:''}<div class="spell-actions">${definition.level && !Spells.alwaysPrepared(definition)?`<button type="button" class="small-btn ${prepared?'primary':''}" data-occult-prepare="${esc(definition.id)}">${prepared?'PREPARED':'PREPARE'}</button>`:`<span class="chip brass">${definition.level?'ALWAYS PREPARED':'CANTRIP'}</span>`}<button type="button" class="small-btn primary" data-occult-cast="${esc(definition.id)}" ${castable?'':'disabled'}>CAST</button>${entry?.added?`<button type="button" class="small-btn ghost" data-occult-forget="${esc(definition.id)}">REMOVE</button>`:''}<small>${esc(definition.source||'Occultist')}</small></div></div></details>`;
   }
 
   function renderSpells(source) {
+    const ui = spellUi(source);
     const page=$('#spellsPage'); if(!page) return;
     page.classList.add('occultist-spells-page');
     const schools=[...new Set(knownSpells(source).map(spell=>spell.school).filter(Boolean))].sort();
     const filtered=knownSpells(source).filter(spell=>{
       const entry=spellEntry(spell,source), definition=spellDefinition(spell,source), needle=ui.spellQuery.toLowerCase();
-      return (!needle || `${definition.name} ${definition.school} ${definition.desc} ${definition.fullText}`.toLowerCase().includes(needle)) && (ui.spellLevel==='all'||Number(definition.level)===Number(ui.spellLevel)) && (ui.spellSchool==='all'||definition.school===ui.spellSchool) && (ui.spellView!=='prepared'||!definition.level||entry?.prepared);
+      return (!needle || `${definition.name} ${definition.school} ${definition.desc} ${definition.fullText}`.toLowerCase().includes(needle)) && (ui.spellLevel==='all'||Number(definition.level)===Number(ui.spellLevel)) && (ui.spellSchool==='all'||definition.school===ui.spellSchool) && (ui.spellView!=='prepared'||Spells.prepared(definition,source));
     });
     const grouped=[...new Set(filtered.map(spell=>Number(spellDefinition(spell,source).level)||0))].sort((a,b)=>a-b).map(level=>`<section class="spell-level-group"><div class="spell-level-head"><h2>${level?`Level ${level}`:'Cantrips'}</h2><span>${filtered.filter(spell=>(Number(spellDefinition(spell,source).level)||0)===level).length}</span></div>${filtered.filter(spell=>(Number(spellDefinition(spell,source).level)||0)===level).map(spell=>renderSpellCard(spell,source)).join('')}</section>`).join('');
     page.innerHTML=`<div class="page-intro spells-intro"><div><span class="eyebrow">OCCULTIST</span><h1>SPELLS</h1><p>Known spells, preparation and casting</p></div><button type="button" class="primary" data-spell-library-open>+ ADD SPELL</button></div><section class="spellcasting-summary"><div><small>ABILITY</small><b>INT ${signed(D.mod('INT',source))}</b></div><div><small>SAVE DC</small><b>${D.spellDC(source)}</b></div><div><small>ATTACK</small><b>${signed(D.spellAttack(source))}</b></div><div><small>PREPARED</small><b>${preparedCount(source)}/${progress(source).prepared}</b></div></section><div class="occ-slot-grid spells-slots">${resourceBar(source)}</div><div class="spell-toolbar"><input id="occSpellSearch" value="${esc(ui.spellQuery)}" placeholder="Search spells…"><select id="occSpellLevel"><option value="all">All levels</option>${[0,1,2,3].map(level=>`<option value="${level}" ${ui.spellLevel==level?'selected':''}>${level?`Level ${level}`:'Cantrip'}</option>`).join('')}</select><select id="occSpellSchool"><option value="all">All schools</option>${schools.map(school=>`<option ${ui.spellSchool===school?'selected':''}>${esc(school)}</option>`).join('')}</select><div class="view-switch"><button type="button" class="filter-btn ${ui.spellView==='known'?'active':''}" data-spell-view="known">KNOWN</button><button type="button" class="filter-btn ${ui.spellView==='prepared'?'active':''}" data-spell-view="prepared">PREPARED</button></div></div><div class="spell-list">${grouped||'<div class="empty">No spells match these filters.</div>'}</div>`;
   }
 
   function renderAlchemyWorkshop(source) {
+    const excluded = experimentExcluded(source);
     const cs=classState(source); if(Number(cs.sciences.alchymie)<3) return '';
     const used=Number(cs.resources.experiment)||0, results=O.potionResults||[], recipes=Homebrew?.potionRecipes?.()||[], projects=cs.potionCrafting.projects||[];
-    return `<section class="section alchemy-workshop"><div class="section-head"><div><span class="eyebrow">ALCHYMIE III</span><h2>Potion Workshop</h2></div><button type="button" class="small-btn" data-new-potion-recipe>+ RECIPE</button></div><div class="experiment-card"><div><h3>Experiment pro každý den</h3><p>Choose results to exclude. Each exclusion automatically costs 1d4 + 1 HP; then one remaining result is rolled.</p></div><div class="experiment-results">${results.map(result=>`<button type="button" class="${ui.experimentExcluded.has(result.roll)?'excluded':''}" data-potion-exclude="${result.roll}"><b>${result.roll}</b><span>${esc(result.name)}</span></button>`).join('')}</div><button type="button" class="primary" data-occult-experiment ${used>=1?'disabled':''}>${used?'USED TODAY':`BREW RANDOM · ${ui.experimentExcluded.size} EXCLUDED`}</button></div><div class="potion-project-grid"><div><h3>Saved Recipes</h3>${recipes.map(recipe=>`<article class="potion-recipe"><span><b>${esc(recipe.name)}</b><small>${recipe.timeMinutes} min · ${recipe.costGp} GP · makes ${recipe.quantity}</small></span><button type="button" class="small-btn" data-potion-start="${esc(recipe.libraryId)}">START</button><p>${nl(recipe.effect||recipe.description)}</p></article>`).join('')||'<p class="muted">Create a reusable recipe. It becomes available to every character.</p>'}</div><div><h3>Active Batches</h3>${projects.map(project=>`<article class="potion-project"><b>${esc(project.recipe?.name||'Potion')}</b><progress max="${Math.max(1,project.totalMinutes)}" value="${project.progressMinutes}"></progress><small>${project.progressMinutes}/${project.totalMinutes} min</small><div><button type="button" class="small-btn" data-potion-progress="${project.id}" data-minutes="10">+10 MIN</button><button type="button" class="small-btn primary" data-potion-progress="${project.id}" data-minutes="60">+1 HOUR</button><button type="button" class="icon-btn" data-potion-cancel="${project.id}">×</button></div></article>`).join('')||'<p class="muted">No potion is currently brewing.</p>'}</div></div></section>`;
+    return `<section class="section alchemy-workshop"><div class="section-head"><div><span class="eyebrow">ALCHYMIE III</span><h2>Potion Workshop</h2></div><button type="button" class="small-btn" data-new-potion-recipe>+ RECIPE</button></div><div class="experiment-card"><div><h3>Experiment pro každý den</h3><p>Choose results to exclude. Each exclusion automatically costs 1d4 + 1 HP; then one remaining result is rolled.</p></div><div class="experiment-results">${results.map(result=>`<button type="button" class="${excluded.has(result.roll)?'excluded':''}" data-potion-exclude="${result.roll}"><b>${result.roll}</b><span>${esc(result.name)}</span></button>`).join('')}</div><button type="button" class="primary" data-occult-experiment ${used>=1?'disabled':''}>${used?'USED TODAY':`BREW RANDOM · ${excluded.size} EXCLUDED`}</button></div><div class="potion-project-grid"><div><h3>Saved Recipes</h3>${recipes.map(recipe=>`<article class="potion-recipe"><span><b>${esc(recipe.name)}</b><small>${recipe.timeMinutes} min · ${recipe.costGp} GP · makes ${recipe.quantity}</small></span><button type="button" class="small-btn" data-potion-start="${esc(recipe.libraryId)}">START</button><p>${nl(recipe.effect||recipe.description)}</p></article>`).join('')||'<p class="muted">Create a reusable recipe. It becomes available to every character.</p>'}</div><div><h3>Active Batches</h3>${projects.map(project=>`<article class="potion-project"><b>${esc(project.recipe?.name||'Potion')}</b><progress max="${Math.max(1,project.totalMinutes)}" value="${project.progressMinutes}"></progress><small>${project.progressMinutes}/${project.totalMinutes} min</small><div><button type="button" class="small-btn" data-potion-progress="${project.id}" data-minutes="10">+10 MIN</button><button type="button" class="small-btn primary" data-potion-progress="${project.id}" data-minutes="60">+1 HOUR</button><button type="button" class="icon-btn" data-potion-cancel="${project.id}">×</button></div></article>`).join('')||'<p class="muted">No potion is currently brewing.</p>'}</div></div></section>`;
   }
 
   function patchHudAndPages(source) {
@@ -222,9 +218,9 @@
     if (button.hasAttribute('data-homebrew-spell-new')) { $('#spellLibraryDialog')?.close(); $('#homebrewSpellForm').reset(); $('#hbSpellSchool').value='Universal'; $('#hbSpellTime').value='Action'; $('#hbSpellRange').value='Self'; $('#hbSpellDuration').value='Instantaneous'; $('#homebrewSpellDialog').showModal(); return; }
     if (button.dataset.addSpell) { SpellCatalog.get(button.dataset.addSpell).then(spell=>{ const result=C.learnOccultistSpell(spell); if(result.ok){toast(`${spell.name} added to the spellbook.`);renderSpellCatalog();} else toast('That spell is already known.','warn'); }); return; }
     if (button.dataset.occultForget) { C.forgetOccultistSpell(button.dataset.occultForget); toast('Spell removed from this character.'); return; }
-    if (button.dataset.spellView) { ui.spellView=button.dataset.spellView; renderSpells(S.get()); return; }
-    if (button.dataset.potionExclude) { const roll=Number(button.dataset.potionExclude); ui.experimentExcluded.has(roll)?ui.experimentExcluded.delete(roll):ui.experimentExcluded.add(roll); if(ui.experimentExcluded.size>=6)ui.experimentExcluded.delete(roll); renderSciences(S.get()); return; }
-    if (button.hasAttribute('data-occult-experiment')) { const result=C.craftOccultistExperiment([...ui.experimentExcluded]); if(result.ok){ui.experimentExcluded.clear();toast(`${result.result.name} brewed · ${result.hpCost} HP spent.`);}else toast(result.reason==='hp'?'Not enough HP for the excluded results.':'Experiment is unavailable.','warn'); return; }
+    if (button.dataset.spellView) { C.setUi('spellView',button.dataset.spellView); return; }
+    if (button.dataset.potionExclude) { const roll=Number(button.dataset.potionExclude), excluded=experimentExcluded(S.get()); excluded.has(roll)?excluded.delete(roll):excluded.add(roll); if(excluded.size>=6)excluded.delete(roll); C.setUi('experimentExcluded',[...excluded]); return; }
+    if (button.hasAttribute('data-occult-experiment')) { const result=C.craftOccultistExperiment([...experimentExcluded(S.get())]); if(result.ok){C.setUi('experimentExcluded',[]);toast(`${result.result.name} brewed · ${result.hpCost} HP spent.`);}else toast(result.reason==='hp'?'Not enough HP for the excluded results.':'Experiment is unavailable.','warn'); return; }
     if (button.hasAttribute('data-new-potion-recipe')) { ensureOccultistDialogs(); $('#potionRecipeForm').reset(); $('#potionRecipeTime').value=60; $('#potionRecipeCost').value=0; $('#potionRecipeYield').value=1; $('#potionRecipeDialog').showModal(); return; }
     if (button.dataset.potionStart) { const recipe=Homebrew?.potionRecipes().find(entry=>entry.libraryId===button.dataset.potionStart); const result=C.startPotionProject(recipe,recipe?.quantity||1); toast(result.ok?`${recipe.name} batch started.`:'Recipe could not be started.',result.ok?'':'warn'); return; }
     if (button.dataset.potionProgress) { const result=C.progressPotionProject(button.dataset.potionProgress,button.dataset.minutes); if(result.ok)toast(result.complete?'Potion finished and added to Gear.':'Brewing time recorded.'); return; }
@@ -233,7 +229,7 @@
     if (button.hasAttribute('data-level-up-open')) { event.preventDefault(); event.stopPropagation(); renderLevelUp(); return; }
     if (button.dataset.occultLevelFinish) { const selections = {}; if ($('#levelMysticLanguage')) selections.mysticLanguage = $('#levelMysticLanguage').value; if ($('#levelMysticSkill')) selections.mysticSkill = $('#levelMysticSkill').value; const result = C.levelUp(button.dataset.occultLevelFinish,selections); if (result.ok) { $('#levelUpDialog').close(); toast(`Occultist level ${result.to} applied.`); } return; }
     if (button.dataset.occultWeapon) { const result = C.executeAction({ name:'Attack', weaponId:button.dataset.occultWeapon, spendAmmo:!!D.weaponAttacks(S.get()).find(weapon=>weapon.id===button.dataset.occultWeapon)?.ammunitionType }); toast(result.ok ? (result.ammunition ? `Attack used 1 ${result.ammunition.type}.` : 'Attack ready.') : 'No carried ammunition.', result.ok?'':'warn'); return; }
-    if (button.dataset.occultCast) { const result = C.castOccultistSpell(button.dataset.occultCast); toast(result.ok ? `${result.spell.name} cast${result.slot?` · level ${result.slot} slot used`:''}.` : result.reason==='prepared'?'Prepare this spell at dawn first.':'No spell slot available.', result.ok?'':'warn'); return; }
+    if (button.dataset.occultCast) { const result = C.castOccultistSpell(button.dataset.occultCast); toast(result.ok ? `${result.spell.name} cast${result.slot?` · level ${result.slot} slot used`:''}.` : result.reason==='prepared'?'Prepare this spell at dawn first.':result.reason==='incapacitated'?'Cannot cast while Incapacitated.':'No spell slot available.', result.ok?'':'warn'); return; }
     if (button.dataset.occultResource) { const result=C.useOccultistResource(button.dataset.occultResource,1); toast(result.ok?'Use recorded.':'No uses remaining.',result.ok?'':'warn'); return; }
     if (button.dataset.occultSlot) { C.adjustOccultistSlot(button.dataset.occultSlot,button.dataset.delta); return; }
     if (button.hasAttribute('data-occult-dawn')) { C.completeOccultistDawn(); toast('Dawn preparation recorded.'); return; }
@@ -246,13 +242,13 @@
     if(target.dataset.occultScience){const result=C.setOccultistScience(target.dataset.occultScience,target.value);if(!result.ok){toast(result.reason==='knowledge'?'Not enough Knowledge Points.':'This tier needs a higher class level.','warn');render();}}
     if(target.dataset.occultChoice) C.setOccultistChoice(target.dataset.occultChoice,target.value);
     if(target.dataset.occultPrepare){ /* buttons only */ }
-    if(target.id==='occSpellLevel'){ui.spellLevel=target.value;renderSpells(S.get());}
-    if(target.id==='occSpellSchool'){ui.spellSchool=target.value;renderSpells(S.get());}
+    if(target.id==='occSpellLevel'){C.setUi('spellLevel',target.value);}
+    if(target.id==='occSpellSchool'){C.setUi('spellSchool',target.value);}
     if(target.id==='spellCatalogLevel') renderSpellCatalog();
   }, true);
   document.addEventListener('input',event=>{
     const target=event.target;
-    if(target.id==='occSpellSearch'){ui.spellQuery=target.value;const position=target.selectionStart;renderSpells(S.get());const next=$('#occSpellSearch');next?.focus();next?.setSelectionRange(position,position);}
+    if(target.id==='occSpellSearch'){const position=target.selectionStart;C.setUi('spellQuery',target.value);renderSpells(S.get());const next=$('#occSpellSearch');next?.focus();next?.setSelectionRange(position,position);}
     if(target.id==='spellCatalogSearch') renderSpellCatalog();
   },true);
   document.addEventListener('click',event=>{const button=event.target.closest('[data-occult-prepare]');if(!button||!active())return;const result=C.toggleOccultistSpell(button.dataset.occultPrepare);if(!result.ok)toast('Prepared spell limit is full.','warn');},true);
@@ -273,7 +269,6 @@
   }, true);
   document.addEventListener('click', event => { if (event.target.closest('#charactersBtn')) setTimeout(() => { document.querySelectorAll('.roster-card').forEach(card => { const open=card.querySelector('[data-roster-switch]'), id=open?.dataset.rosterSwitch || Roster.activeId(); const profile=Roster.list().find(item=>item.id===id); const small=card.querySelector('small'); if(profile&&small) small.textContent=`Level ${profile.level} ${window.CharacterClassRegistry.get(profile.classKey)?.name||''} · ${profile.race||''}`; }); }, 0); });
 
-  S.subscribe(() => setTimeout(render, 0));
   ensureClassDialog(); ensureOccultistDialogs(); setTimeout(render, 0);
-  window.CharacterOccultistUIV10 = { render, renderBuilder };
+  window.CharacterOccultistUIV10 = { render, renderBuilder, actionRecords };
 })();

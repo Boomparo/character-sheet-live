@@ -43,7 +43,7 @@ for (const file of [
   'js/classes/occultist/full-rules-v10.js',
   'js/core/spell-catalog-v10.js',
   'js/core/state-v9.js', 'js/core/rules-2024.js', 'js/core/origin-v9.js',
-  'js/core/derived-v9.js', 'js/core/commands-v9.js', 'js/classes/occultist/import-v10.js', 'js/core/catalog-srd.js'
+  'js/core/derived-v9.js', 'js/classes/occultist/spells-v10.js', 'js/core/commands-v9.js', 'js/classes/occultist/import-v10.js', 'js/core/catalog-srd.js'
 ]) require(path.join(root, file));
 
 const S = global.CharacterState;
@@ -55,7 +55,7 @@ const Catalog = global.V7SItemCatalog;
 const GearRules = global.GearRulesV9;
 const Homebrew = global.CharacterHomebrewLibrary;
 
-assert.equal(S.APP_VERSION, '10.1.4-safe-profiles');
+assert.equal(S.APP_VERSION, '10.1.5-play-ready');
 
 function fresh(mutator) {
   const value = S.fresh();
@@ -778,10 +778,10 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(app, /C\.executeAction/);
   assert.equal(app.includes('INDYHO SKLUZ UPGRADE'), false);
   assert.equal(app.includes('ON HIT ·'), false);
-  assert.match(app, /value="" placeholder="\+ \/ −"/);
+  assert.match(app, /name="moneyOperation" value="remove"/);
   assert.match(treasureData, /modifikátoru Dexterity, minimálně dva/);
   assert.equal(/Kostk(?:a|ou|y|ami) coolu/i.test(`${treasureData}\n${relicData}`), false, 'canonical content consistently calls the resource Cool die');
-  assert.match(index, /service-worker\.js\?v=10\.1\.4/);
+  assert.match(index, /service-worker\.js\?v=10\.1\.5/);
   assert.ok(scripts.includes('js/core/gear-rules-v9.js'));
   assert.equal((index.match(/class="sheet-page"/g) || []).length, 9);
   assert.match(index, /id="spellsPage"/);
@@ -833,11 +833,11 @@ test('loaded V9 graph has one renderer and no DOM patch loop', () => {
   assert.match(v9Css, /grid-template-columns:218px minmax\(0,1fr\)/, 'desktop uses a persistent navigation rail');
   assert.match(app, /class="page-dot"[^>]+><span>\$\{page\.title\}<\/span>/, 'desktop navigation exposes readable page labels');
   const worker = fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8');
-  assert.match(worker, /character-sheet-v10-safe-profiles-2/);
+  assert.match(worker, /character-sheet-v10-play-ready-5/);
   const occultUi = fs.readFileSync(path.join(root, 'js/ui/occultist-v10.js'), 'utf8');
   const renderBody = occultUi.slice(occultUi.indexOf('function render()'), occultUi.indexOf('function classOptions'));
   assert.equal(renderBody.includes('button.'), false, 'rendering never depends on an event-handler button variable');
-  assert.match(worker, /app-v9\.js\?v=10\.1\.4/);
+  assert.match(worker, /app-v9\.js\?v=10\.1\.5/);
 });
 
 test('class registry keeps Treasure Hunter and Occultist state independent', () => {

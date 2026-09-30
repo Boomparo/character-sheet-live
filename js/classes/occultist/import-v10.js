@@ -38,7 +38,7 @@
     occult.spells = (payload.spells || []).map(spell => {
       const snapshot=S.clone(spell), id=spell.id || spell.libraryId;
       const builtIn=window.OccultistDataV10?.spells?.some(definition=>definition.id===id);
-      return { ...snapshot, id, prepared:!Number(spell.level)||!!spell.prepared, added:!builtIn, definition:builtIn?undefined:{...snapshot,id} };
+      return { ...snapshot, id, prepared:!!spell.prepared, added:!builtIn, definition:builtIn?undefined:{...snapshot,id} };
     }).filter(spell=>spell.id);
     occult.ritualNotes = String(payload.ritualNotes || '');
 

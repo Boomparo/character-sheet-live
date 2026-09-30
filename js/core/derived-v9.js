@@ -809,14 +809,20 @@
   }
 
   function weaponRange(item) {
-    if (typeof item?.rangeLabel === 'string' && item.rangeLabel) return item.rangeLabel;
-    if (typeof item?.range === 'string' && item.range) return item.range;
-    const raw = item?.raw || {};
-    const ranged = raw.range;
-    const thrown = raw.throw_range;
-    const selected = ranged?.normal != null ? ranged : thrown?.normal != null ? thrown : null;
-    if (!selected) return String(raw.weapon_range || '');
-    return `${selected.normal}${selected.long ? `/${selected.long}` : ''} ft.`;
+    const raw = item?.raw || {}, properties = weaponProperties(item);
+    const rangedWeapon = /ranged/i.test(`${item?.category || ''} ${raw.weapon_range || ''}`) || properties.some(value => /^Ammunition/i.test(value));
+    const reach = properties.some(value => /^Reach/i.test(value)) ? 10 : 5;
+    const explicit = [item?.rangeText, item?.rangeLabel, item?.range].find(value => typeof value === 'string' && value.trim());
+    const thrownProperty = properties.find(value => /^Thrown/i.test(value));
+    const thrownText = thrownProperty?.match(/\d+\/\d+/)?.[0];
+    if (explicit) {
+      return !rangedWeapon && thrownProperty && /^\d+\/\d+/.test(explicit) ? `${reach} ft. · Thrown ${explicit}` : explicit;
+    }
+    const distance = value => `${value.normal}${value.long ? `/${value.long}` : ''} ft.`;
+    if (rangedWeapon) return raw.range?.normal != null ? distance(raw.range) : 'Range not specified';
+    const thrown = raw.throw_range?.normal != null ? distance(raw.throw_range) : thrownText ? `${thrownText} ft.` : '';
+    const melee = raw.range?.normal != null ? distance(raw.range) : `${reach} ft.`;
+    return `${melee}${thrown ? ` · Thrown ${thrown}` : ''}`;
   }
 
   function weaponProperties(item) {
@@ -881,13 +887,13 @@
       const enhancement = weaponEnhancement(item);
       const raw = item.raw || {};
       const canonicalName = canonicalWeaponName(item);
-      const dice = String(canonicalName).toLowerCase() === 'whip' && level(source) >= 1 ? '1d6' : item.damage || raw.damage?.damage_dice || '—';
+      const dice = String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' && level(source) >= 1 ? '1d6' : item.damage || raw.damage?.damage_dice || '—';
       const type = item.damageType || raw.damage?.damage_type?.name || '';
       const damageModifier = mod(abilityKey, source) + weaponDamageBonus(item);
       const masteryProperty = item.mastery || raw.mastery?.name || raw.mastery || Rules.weaponMastery(canonicalName) || '';
       const selectedMasteries = choices(source).weaponMasteries || [];
       const masterySources = [];
-      if (String(canonicalName).toLowerCase() === 'whip' && level(source) >= 1) masterySources.push('Mistr biče');
+      if (String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' && level(source) >= 1) masterySources.push('Mistr biče');
       if (selectedMasteries.some(name => String(name).toLowerCase() === String(canonicalName).toLowerCase() || String(name).toLowerCase() === String(item.name || '').toLowerCase())) masterySources.push('Weapon Mastery');
       const activeMastery = masterySources.length ? masteryProperty : '';
       const ammoType = weaponAmmunitionType(item);
@@ -900,7 +906,7 @@
         mastery: activeMastery, masteryProperty, masterySources,
         masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || '' : '',
         ammunitionType: ammoType, firearm,
-        rangeText: weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
+        rangeText: String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' ? '15 ft.' : weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
         attackBreakdown: [['Ability', `${abilityKey} ${signed(mod(abilityKey, source))}`], ['Proficiency Bonus', signed(pb(source))], ...(enhancement ? [['Weapon bonuses', signed(enhancement)]] : [])]
       };
     });
@@ -987,7 +993,7 @@
     ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
     isConsumable, containerLoad, inventoryIssues, tacticalRecommendations,
     walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,
-    weaponAmmunitionType, isAmmunitionItem, ammunitionCount, ammunitionEntriesForWeapon, ammunitionSummaryForWeapon,
+    weaponRange, weaponProperties, weaponAmmunitionType, isAmmunitionItem, ammunitionCount, ammunitionEntriesForWeapon, ammunitionSummaryForWeapon,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
     saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
     choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, fixedInitiative, fixedSave, fixedSkill,

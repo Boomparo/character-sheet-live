@@ -6,7 +6,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 20;
-  const APP_VERSION = '10.1.4-safe-profiles';
+  const APP_VERSION = '10.1.5-play-ready';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -252,8 +252,21 @@
       c.hitDice[die] = c.hitDice[die] && typeof c.hitDice[die] === 'object' ? c.hitDice[die] : { spent: 0 };
       c.hitDice[die].spent = clamp(c.hitDice[die].spent, 0, c.level);
     }
+    c.deathSaves = c.deathSaves && typeof c.deathSaves === 'object' ? c.deathSaves : {};
+    c.deathSaves.stable = !!c.deathSaves.stable;
+    c.deathSaves.dead = !!c.deathSaves.dead || Number(c.deathSaves.failures) >= 3;
+    c.deathSaves.unconsciousFromZero = !!c.deathSaves.unconsciousFromZero;
     c.deathSaves.successes = clamp(c.deathSaves.successes, 0, 3);
     c.deathSaves.failures = clamp(c.deathSaves.failures, 0, 3);
+    if (c.hp.current > 0) {
+      if (c.deathSaves.unconsciousFromZero) c.conditions = c.conditions.filter(value => value !== 'Unconscious');
+      c.deathSaves = { successes:0, failures:0, stable:false, dead:false, unconsciousFromZero:false };
+    } else {
+      if (c.deathSaves.successes >= 3 && !c.deathSaves.dead) c.deathSaves.stable = true;
+      if (c.deathSaves.stable) { c.deathSaves.successes = 0; c.deathSaves.failures = 0; }
+      if (!c.conditions.includes('Unconscious')) c.deathSaves.unconsciousFromZero = true;
+      c.conditions = unique([...c.conditions, 'Unconscious', 'Prone']);
+    }
 
     for (const key of ['resistances', 'immunities', 'vulnerabilities', 'conditionImmunities']) {
       c.damageDefenses[key] = unique(c.damageDefenses[key]);

@@ -1,0 +1,525 @@
+{
+  "name": "Lili",
+  "race": "Víla/šotek",
+  "background": "",
+  "level": 2,
+  "alignment": "Chaotic Neutral",
+  "zodiac": "♊ Blíženci",
+  "mysticLanguage": "Sanskrt",
+  "inspiration": false,
+  "ac": 14,
+  "initiativeMisc": 0,
+  "speed": 30,
+  "hpCurrent": 22,
+  "hpMax": 22,
+  "hpTemp": 0,
+  "hitDice": "1d10",
+  "deathSuccess": 0,
+  "deathFail": 0,
+  "focus1": "",
+  "focus2": "",
+  "bag": "",
+  "ritualNotes": "",
+  "inventory": "",
+  "notes": "",
+  "backstory": "",
+  "cp": 16,
+  "sp": 11,
+  "ep": 0,
+  "gp": 24,
+  "pp": 0,
+  "portrait": "",
+  "abilities": {
+    "STR": 7,
+    "DEX": 13,
+    "CON": 16,
+    "INT": 16,
+    "WIS": 10,
+    "CHA": 10
+  },
+  "profs": {
+    "skill:Acrobatics": 0
+  },
+  "sciences": {
+    "spiritismus": 0,
+    "astrologie": 1,
+    "kabala": 0,
+    "esoterika": 1,
+    "alchymie": 0
+  },
+  "slotsUsed": {
+    "1": 2,
+    "2": 0,
+    "3": 0
+  },
+  "spells": [
+    {
+      "libraryId": "blade-ward",
+      "choiceKey": "esoterikaCantrip",
+      "prepared": false,
+      "open": false,
+      "name": "Blade Ward",
+      "level": 0,
+      "science": "Esoterika",
+      "time": "Action",
+      "range": "Self",
+      "school": "Abjuration",
+      "components": "V, S",
+      "duration": "Concentration, up to 1 min.",
+      "attack": "Defense",
+      "source": "2024 rules",
+      "desc": "Whenever a creature makes an attack roll against you before the spell ends, the attacker subtracts 1d4 from the attack roll.",
+      "note": ""
+    },
+    {
+      "libraryId": "palm-reading",
+      "prepared": false,
+      "open": true,
+      "name": "Palm Reading",
+      "level": 1,
+      "science": "Astrologie",
+      "time": "Action",
+      "range": "Touch",
+      "school": "Divination",
+      "components": "S, M (palm / tarot cards)",
+      "duration": "Instant.",
+      "attack": "STR/DEX/CHA",
+      "source": "Homebrew Occultist",
+      "desc": "Target one person you can touch and have them roll a Strength/Dexterity saving throw (their choice). On a fail you make them to open their hand and show you their palm. The target can willingly fail. On a failed save the caster can learn one fact about their past, present, or future. If the caster chooses the future, the future can be altered and the prediction can be turned false if preventative measures against the future event occur. On a successful save nothing happens. This spell is only useful mostly as a gimmick and for flavor reasons.",
+      "note": "Tarot reading - musíš donutit danou osobu zamíchat balíček. "
+    },
+    {
+      "libraryId": "predurceni",
+      "prepared": true,
+      "open": true,
+      "name": "Předurčení",
+      "level": 1,
+      "science": "Astrologie",
+      "time": "Action",
+      "range": "Sight",
+      "school": "Divination",
+      "components": "S, M (Astrologie focus)",
+      "duration": "Do spánku",
+      "attack": "Stored d20",
+      "source": "Homebrew Occultist",
+      "desc": "Díky studiu planetárních dráh pohybu, hvězdných konjunkcí a měsíčních fází dokážeš\nvypočítat, koho kdy čeká štěstí či smůla.\nV rámci své akce si hodíš 1d20 a výsledek si zaznamenáš. Od této chvíle můžeš kdykoli, když\nvidíš na postavu (vč. sebe), která zrovna hází d20., nahradit její hod hodnotou, kterou sis\nprve zaznamenal. Musíš tak učinit dříve, než je oznámena úspěšnost či neúspěšnost ability\nchecku/saving throw/attacku (tj. můžeš vědět, že na kostce padla 10, ale nesmíš vědět,\njestli to stačilo na úspěch; v případě Death saving throw je nutné oznámit výsledek před\nsamotným hodem).\nÚčinnost kouzla je končí, jakmile využiješ jeho efekt, jakmile kouzlo opět vyčaruješ, nebo\njakmile usneš (případně upadneš do transu).",
+      "note": "Hodíš 1d20 a zapíšeš výsledek. Když vidíš bytost házející d20, můžeš před oznámením úspěchu/neúspěchu její hod nahradit uloženou hodnotou. Končí použitím, recastem nebo spánkem."
+    },
+    {
+      "libraryId": "mage-armor",
+      "prepared": false,
+      "open": false,
+      "name": "Mage Armor",
+      "level": 1,
+      "science": "Esoterika",
+      "time": "Action",
+      "range": "Touch",
+      "school": "Abjuration",
+      "components": "V, S, M (Esoterika focus — HB)",
+      "duration": "8 h",
+      "attack": "Defense",
+      "source": "2024 Free Rules + HB material",
+      "desc": "You touch a willing creature who isn’t wearing armor. Until the spell ends, the target’s base AC becomes 13 plus its Dexterity modifier. The spell ends early if the target dons armor.",
+      "note": ""
+    },
+    {
+      "libraryId": "protection-eg",
+      "prepared": true,
+      "open": false,
+      "name": "Protection from Evil and Good",
+      "level": 1,
+      "science": "Esoterika",
+      "time": "Action",
+      "range": "Touch",
+      "school": "Abjuration",
+      "components": "V, S, M (Holy Water 25+ GP, consumed)",
+      "duration": "Concentration, up to 10 min.",
+      "attack": "Defense",
+      "source": "2024 Free Rules",
+      "desc": "Until the spell ends, one willing creature you touch is protected against creatures that are Aberrations, Celestials, Elementals, Fey, Fiends, or Undead. The protection grants several benefits. Creatures of those types have Disadvantage on attack rolls against the target. The target also can’t be possessed by or gain the Charmed or Frightened conditions from them. If the target is already possessed, Charmed, or Frightened by such a creature, the target has Advantage on any new saving throw against the relevant effect.",
+      "note": "Willing cíl je chráněn proti Aberrations, Celestials, Elementals, Fey, Fiends a Undead: jejich útoky proti němu mají Disadvantage; nemohou jej nově possess/charm/frighten a proti už existujícímu efektu od nich má Advantage na nové saves."
+    },
+    {
+      "libraryId": "vicious-horoscope",
+      "choiceKey": "astrologieCantrip",
+      "prepared": false,
+      "open": false,
+      "name": "Vicious Horoscope",
+      "level": 0,
+      "science": "Astrologie",
+      "time": "Action",
+      "range": "60 ft.",
+      "school": "Divination",
+      "components": "V",
+      "duration": "Instant.",
+      "attack": "WIS save",
+      "source": "2024 Vicious Mockery + HB reskin",
+      "desc": "Každý astrolog musí mít základní přehled o tom, v jakém postavení jsou zrovna planet a co z toho plyne pro zrozence jednotlivých znamení. Nebo to alespoň může předstírat… \nJedné bytosti, kterou vidíš nebo slyšíš v dosahu kouzla, prozradíš smolnou předpověď na dnešní den. Cíl musí uspět v záchranném hodu moudrosti nebo utrpět psychic poškození 1d6 a mít znevýhodnění při dalším hodu na útok, který provede před koncem svého dalšího kola. Na bytosti, které tvým slovům nerozumějí, nemá toto kouzlo žádný vliv.",
+      "upcast": "Poškození se zvýší o 1d6, když dosáhnete úrovní 5 (2d6), 11 (3d6) a 17 (4d6).",
+      "note": "1d6 psychic když target neuspěje WIS ST."
+    },
+    {
+      "libraryId": "detect-good-evil",
+      "prepared": true,
+      "open": true,
+      "name": "Detect Evil and Good",
+      "level": 1,
+      "science": "Class",
+      "time": "Action",
+      "range": "Self",
+      "school": "Divination",
+      "components": "V, S",
+      "duration": "Concentration, up to 10 min.",
+      "attack": "Detection",
+      "source": "2024 Free Rules",
+      "desc": "Po dobu trvání vycítíš polohu Aberrations, Celestials, Elementals, Fey, Fiends a Undead do 30 ft. Také poznáš aktivní Hallow. Efekt blokuje 1 ft. kamene/hlíny/dřeva, 1 inch kovu nebo tenká vrstva olova.",
+      "note": ""
+    },
+    {
+      "libraryId": "detect-aura",
+      "prepared": true,
+      "open": false,
+      "name": "Detect Aura",
+      "level": 1,
+      "science": "Class",
+      "time": "Action",
+      "range": "Self (30 ft.)",
+      "school": "Divination",
+      "components": "S",
+      "duration": "5 min.",
+      "attack": "Detection",
+      "source": "Homebrew Occultist",
+      "desc": "Otevřeš své neviditelné třetí oko. Pokud se ve vzdálenosti 30 ft. od tebe nachází nějaký\nmagický či prokletý předmět/efekt/bytost, vycítíš jeho přítomnost.\nZa využití magické akce můžeš podrobněji prozkoumat auru tohoto magického efektu a\nodhalit tak jeho školu magie.\nObdobným způsobem vycítíš přítomnost všech inteligentních (INT alespoň 6) bytostí v\ndosahu kouzla. Za využití magické akce můžeš podrobněji prozkoumat auru vybrané\nbytosti.\n1. Bílá/růžová – nevinnost, naivita/slepá víra, dětský pohled na svět\n2. Červená – silné vášně, odhodlání\n3. Oranžová – energičnost, drzost, hravost\n4. Žlutá – spokojenost, štěstí, může ale také znamenat závistivost\n5. Zelená – pečovatelská povaha, ochranářství\n6. Tyrkysová - kreativita, fantazie\n7. Bledě modrá – strach, úzkostlivost\n8. Tmavě modrá – touha po poznání, vysoká inteligence\n9. Fialová – tajnůstkářství, uzavřenost, napojení na nadpřirozeno\n10. Hnědá – únava, pasivita, mrzutost\n11. Hnědočervená – hamižnost, požitkářství, materiálnost\n12. Černá – žal, potlačení vlastní přirozenosti, temnota\nAura je proměnlivá a může být výrazně ovlivněna aktuální rozpoložením dané bytosti (např.\nběhem truchlení může jinak žlutá aura zčernat...).Čím výraznější aura je, tím silnější jsou jí\npřipisované vlastnosti.\nPřes kov a přes kámen bytosti nelze vycítit.",
+      "note": ""
+    },
+    {
+      "libraryId": "custom",
+      "prepared": false,
+      "open": true,
+      "name": "Omračující trik",
+      "level": 0,
+      "science": "Class feature",
+      "time": "Action",
+      "range": "30 ft.",
+      "school": "Necromancy",
+      "note": "",
+      "desc": "Ranged spell attack 30 ft., 1d6+1 psychic. Pokud by cíl klesl na 0 HP, vrátí se na 1 HP, je stabilizovaný a v bezvědomí 1d4 hodin / do dalšího léčení. ",
+      "upcast": "5th: 2d6+2; 11th: 3d6+3",
+      "source": "HB",
+      "attack": "Att.",
+      "duration": "Instant.",
+      "components": "V, S"
+    }
+  ],
+  "resources": {
+    "thirdEye": 0,
+    "chakra": 0,
+    "magBlock": 0,
+    "lifeTransfer": 0,
+    "universe": 0,
+    "chakraMaster": 0,
+    "doll": 0,
+    "experiment": 0,
+    "metals": 0,
+    "essence": 0,
+    "fourElements": 0,
+    "soulBind": 0
+  },
+  "conditions": {},
+  "exhaustion": 0,
+  "customConditions": [],
+  "defenses": {
+    "resistances": [
+      "Falling"
+    ],
+    "immunities": [],
+    "vulnerabilities": [],
+    "conditionImmunities": []
+  },
+  "birthDate": "25.5.1845",
+  "age": 66,
+  "height": "156 cm",
+  "weight": "35 kg",
+  "hair": "Dlouhé, kudrnaté, rozvrkočené, světle hnědé.",
+  "eyes": "Šedivo-modré",
+  "appearance": "Světlá pleť, na sluníčku až lehce perleťová. Vrásky.\nKřídla má vždy svázané.\n",
+  "raceNotes": "",
+  "languages": [
+    {
+      "name": "Angličtina",
+      "level": "C",
+      "source": "points"
+    },
+    {
+      "name": "Francouzština",
+      "level": "B",
+      "source": "points"
+    },
+    {
+      "name": "Němčina",
+      "level": "A",
+      "source": "points"
+    }
+  ],
+  "bgSkill1": "Performance",
+  "bgSkill2": "Sleight of Hand",
+  "bgTool": "Alchemist’s Supplies",
+  "bgOtherProf": "Gaming Set • Playing Cards",
+  "bgFeat": "Resilient",
+  "personality": "",
+  "hobby": "",
+  "flaw": "",
+  "origin": "",
+  "relationships": "",
+  "livelihood": "",
+  "goals": "",
+  "trouble": "",
+  "london": "",
+  "pointBuy": {
+    "STR": 7,
+    "DEX": 12,
+    "CON": 15,
+    "INT": 15,
+    "WIS": 10,
+    "CHA": 10
+  },
+  "asiMode": "1+1+1",
+  "asiChoices": [
+    "INT",
+    "CON",
+    "DEX"
+  ],
+  "acMisc": 0,
+  "hpAuto": true,
+  "hpMiscMax": 0,
+  "hitDiceSpent": 0,
+  "weapons": [
+    {
+      "id": "dagger",
+      "training": "auto",
+      "attackMisc": 0,
+      "damageMisc": 0
+    }
+  ],
+  "armors": [
+    {
+      "id": "studded",
+      "training": "auto",
+      "donned": true
+    }
+  ],
+  "healerKitUses": 10,
+  "mageArmorActive": false,
+  "featConfig": {
+    "resilientAbility": "DEX",
+    "skilled": [
+      "",
+      "",
+      ""
+    ],
+    "luckyUsed": 0,
+    "savageUsed": false
+  },
+  "manualTraining": {
+    "light": true,
+    "medium": false,
+    "heavy": false,
+    "shield": false
+  },
+  "items": [
+    {
+      "id": "rations",
+      "qty": 1,
+      "location": "Backpack",
+      "weight": 2
+    },
+    {
+      "id": "waterskin",
+      "qty": 1,
+      "location": "Backpack",
+      "weight": 5
+    },
+    {
+      "id": "backpack",
+      "qty": 1,
+      "location": "Equipment",
+      "weight": 5
+    },
+    {
+      "id": "custom-1787611439863",
+      "custom": true,
+      "name": "Hooded lantern",
+      "qty": 1,
+      "location": "Backpack",
+      "weight": 0,
+      "desc": ""
+    },
+    {
+      "id": "custom-1787667476814",
+      "custom": true,
+      "name": "Sada 7 krystalů ",
+      "qty": 1,
+      "location": "Backpack",
+      "weight": 0,
+      "desc": ""
+    },
+    {
+      "id": "custom-1787667485862",
+      "custom": true,
+      "name": "Astrologická mapa",
+      "qty": 1,
+      "location": "Backpack",
+      "weight": 0,
+      "desc": ""
+    },
+    {
+      "id": "custom-1789556350217",
+      "custom": true,
+      "name": "R.U.M",
+      "qty": 1,
+      "location": "Equipment",
+      "weight": 0,
+      "desc": "BA: vypít za 2d4+2 HP\nA: dát někomu 5ft. daleko za 2d4+2 HP\n\ncost: 20gp"
+    },
+    {
+      "id": "custom-1789556363975",
+      "custom": true,
+      "name": "Posilující nápoj",
+      "qty": 1,
+      "location": "Equipment",
+      "weight": 0,
+      "desc": "BA: vypít za 1d6 heal\nA: nalít do úst někomu 5ft. ode mě za 1d6 heal\n\ncost: 6gp"
+    }
+  ],
+  "npcs": [
+    {
+      "name": "Horace Proudspark",
+      "notes": "Důležitý obchodník s koloniální zbožím. Padělá dokumenty. Nepřítel Lili, protože mu vyvěštila blabla"
+    },
+    {
+      "name": "Narikin Liranak",
+      "notes": "Dlouho ztracený bratr. *13.4.1840"
+    },
+    {
+      "name": "Lenny a Carl",
+      "notes": "Thugs od Horace, jdou vyřídit účty"
+    },
+    {
+      "name": "William Williams",
+      "notes": "Dealer drog"
+    },
+    {
+      "name": "Eliza Finch",
+      "notes": "Vymahačka"
+    },
+    {
+      "name": "Oscar Quinn",
+      "notes": "Pulcik Dorian graye"
+    },
+    {
+      "name": "Lady Godiva Humpalot",
+      "notes": "Vlastní aukční síň "
+    }
+  ],
+  "scienceChoices": {
+    "astrologieCantrip": "vicious-horoscope",
+    "esoterikaCantrip": "blade-ward"
+  },
+  "classChoices": {
+    "mysticLanguage": "Sanskrt",
+    "mysticSkill": "Medicine"
+  },
+  "builderMode": false,
+  "classKey": "occultist",
+  "v6ClassConfirmed": true,
+  "classSkillChoices": {
+    "occultist": [
+      "Arcana",
+      "Deception",
+      "Insight"
+    ],
+    "treasure": []
+  },
+  "treasure": {
+    "coolUsed": 0,
+    "ancientLanguages": [
+      "",
+      "",
+      ""
+    ],
+    "vehicles": [
+      "",
+      ""
+    ],
+    "expertise": "",
+    "weaponMasteries": [
+      "",
+      ""
+    ],
+    "featureUses": {},
+    "relics": []
+  },
+  "textEdits": {
+    "classFeatures": {
+      "occultist": {},
+      "treasure": {}
+    },
+    "traits": {},
+    "sciences": {},
+    "relics": {}
+  },
+  "dailyHoroscopes": {
+    "♈ Beran": "Někdo dnes může zpochybnit tvoji autoritu. Největší vítězství bude nevyhrát hádku, ale udržet tempo a nenechat se zdržet.",
+    "♉ Býk": "Venuše přeje požitkům, estetice a příjemným obchodům. Dopřej si něco kvalitního, ale nekupuj klid duše za cenu, kterou zítra budeš litovat.",
+    "♊ Blíženci": "Můžeš mít chuť dělat všechno najednou. Vyber dvě priority a ostatní si napiš, jinak večer zjistíš, že jsi začal šest věcí a dokončil jednu.",
+    "♋ Rak": "Někdo blízký bude potřebovat ochranu nebo praktickou podporu. Pomoz, ale nenech péči změnit se v řízení cizího života.",
+    "♌ Lev": "Slunce přeje vedení, prezentaci a odvážným gestům. Deleguj ale alespoň jednu věc; král, který dělá všechno sám, brzy přestane vládnout.",
+    "♍ Panna": "Dnešek přeje úklidu, třídění a organizaci informací. Pozor na perfekcionismus, který odkládá samotný začátek.",
+    "♎ Váhy": "Někdo může využít tvé snahy udržet klid. Harmonie není totéž co ticho; někdy je fér konflikt lepší než krásná lež.",
+    "♏ Štír": "Nějaká stará křivda se připomene. Rozhodni, zda ji chceš skutečně řešit, nebo ji jen znovu živit.",
+    "♐ Střelec": "Někdo tě bude chtít svázat pravidlem, které ti nedává smysl. Než ho porušíš, zjisti, proč vůbec existuje.",
+    "♑ Kozoroh": "Dnes se vyplatí dlouhodobé uvažování. Malý krok správným směrem je cennější než velké gesto bez pokračování.",
+    "♒ Vodnář": "Někdo z okraje skupiny dnes přinese nejzajímavější informaci. Poslouchej i lidi, kteří nemají nejhlasitější hlas.",
+    "♓ Ryby": "Dnešek přeje umění, symbolům, snění a jemným náznakům. U praktických rozhodnutí ale přidej jednu kontrolu reality navíc."
+  },
+  "horoscopeRoll": 3,
+  "viciousLines": [
+    "Merkur je v retrográdu a ty zjevně taky.",
+    "Typický Štír. Tolik tajemství a ani jedno užitečné.",
+    "Mars je dnes v Beranu. To vysvětluje tvoje rozhodování, neomlouvá ho.",
+    "Podle tvého horoskopu dnes nemáš dělat zásadní rozhodnutí. Začala bych tímhle útokem.",
+    "Jupiter ti dnes přeje. Škoda, že zbytek vesmíru ne.",
+    "Venuše doporučuje vyhnout se konfliktům. Poslechni ji.",
+    "Saturn právě vstoupil do domu následků. Hádej, kdo tam bydlí.",
+    "Tvoje aura říká „sebevědomí“. Planety říkají „nepodložené“.",
+    "Máš dnes příznivé postavení hvězd pro osobní růst. Zkus začít útěkem.",
+    "Kdybys byl znamení, byl bys varování v kalendáři.",
+    "Nechci tě děsit, ale v tvém horoskopu je dnes hodně mečů.",
+    "Vesmír má pro tebe zprávu. Je stručná a velmi neslušná.",
+    "Tvoje životní cesta právě prochází obdobím prudkého zpětného rázu.",
+    "Vidím v tvé budoucnosti krátkou, ale intenzivní lekci pokory.",
+    "Dnes je skvělý den dělat chyby. Jsi očividně ve formě.",
+    "Měsíc je v Raku. Ty jsi v problému.",
+    "Hvězdy nelžou. Jen občas používají velmi urážlivé metafory.",
+    "Tvoje ascendentní znamení je dnes „špatný nápad“.",
+    "Nemám ráda determinismus, ale u tebe jsou planety podezřele jednomyslné.",
+    "Tvůj Saturn return začal předčasně. Gratuluju.",
+    "Jestli se cítíš sledovaný, to jsou jen všechny planety, jak čekají, co pokazíš.",
+    "V horoskopu máš dnes „nečekaný náraz reality“. Jak praktické.",
+    "Vesmír ti dnes radí zpomalit. Já bych mu věřila.",
+    "Tvoje aura je nádherná. Bohužel přesně barvy, která značí katastrofální úsudek.",
+    "Typický Kozoroh: plán máš. Škoda, že realita nedostala kopii.",
+    "Typické Ryby: sníš. Zkus se probudit před dalším útokem.",
+    "Typický Lev: hlavní postava vlastního neštěstí.",
+    "Typický Blíženec: dva názory a oba špatně.",
+    "Typická Panna: tolik detailů a přesto jsi přehlédl ten důležitý.",
+    "Typický Býk: tvrdohlavost je skvělá obrana, dokud proti ní někdo nepoužije fyziku.",
+    "Typický Vodnář: originální řešení problému, který sis sám vytvořil.",
+    "Typické Váhy: než se rozhodneš, bude po boji.",
+    "Typický Střelec: nádherný optimismus. Téměř dojemný.",
+    "Typický Rak: tohle si budeš pamatovat emocionálně i za deset let.",
+    "Typický Beran: nejdřív narazit, potom přemýšlet.",
+    "Dnešní konjunkce je vzácná: všechny planety se shodují, že tohle nedopadne dobře."
+  ],
+  "tarotReversedChance": 0.2
+}

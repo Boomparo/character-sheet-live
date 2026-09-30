@@ -100,7 +100,7 @@
   }
 
   function rulesText(value, source = state()) {
-    let text = normalizedCoolText(value);
+    let text = window.CharacterRulesHelp.text(normalizedCoolText(value));
     const quantities = [
       [5, /(pěti\s+hodům|pět\s+hodů)\s+Cool die(?!\s*\()/gi],
       [4, /(čtyřem\s+hodům|čtyři\s+hody)\s+Cool die(?!\s*\()/gi],
@@ -252,7 +252,7 @@
       ${section('Combat', `<div class="combat-vitals">
         <button type="button" class="vital-card vital-hp" data-open-hp><span class="vital-label">HIT POINTS</span><span class="vital-value"><strong>${health.current}</strong><i>/ ${health.max}</i></span><small>${health.temp ? `+${health.temp} TEMP HP` : 'Tap for damage & healing'}</small></button>
         <button type="button" class="vital-card vital-ac" data-stat-detail="ac"><span class="vital-label">ARMOR CLASS</span><strong>${D.armorClass(source)}</strong><small>${esc(armor.label)} · View formula & edit</small></button>
-      </div><div class="stat-grid combat-secondary">
+      </div>${deathSavesPanel(source)}<div class="stat-grid combat-secondary">
         <button type="button" class="stat" data-stat-detail="initiative"><span>INIT</span><span class="stat-value-row"><b>${S.signed(D.initiative(source))}</b>${rollIndicator(initMode)}</span></button>
         ${statDetail('SPEED', `${D.speed(source)} ft.`, 'speed')}${statDetail('WHIP DC', D.whipRopeDC(source), 'whipDc', 'compact')}${statDetail('LOAD', `${weightNumber(load.weight)}/${weightNumber(load.limit)} lb`, 'encumbrance', `compact load-stat ${load.status !== 'normal' ? 'load-alert' : ''}`)}${statDetail('PUSH / DRAG', `${weightNumber(load.pushDragLift)} lb`, 'encumbrance', `compact load-stat ${load.status === 'over' ? 'load-alert' : ''}`)}${hasRelics ? statDetail('RELIC DC', D.relicDC(source), 'relicDc', 'compact') : ''}${stat('PB', S.signed(D.pb(source)), 'compact')}
       </div>${senses.length ? `<div class="character-senses"><b>SENSES</b>${senses.map(sense => `<span class="chip">${esc(sense)}</span>`).join('')}</div>` : ''}<div class="hero-actions rest-actions"><button class="small-btn" type="button" data-rest="short">Short Rest</button><button class="small-btn" type="button" data-rest="long">Long Rest</button><button class="small-btn ${c.inspiration ? 'primary' : ''}" type="button" data-inspiration>Inspiration</button></div>`, '', 'combat-section')}
@@ -285,6 +285,7 @@
 
   function allActionRecords() {
     const source = state();
+    if (source.character.classKey === 'occultist' && window.CharacterOccultistUIV10) return window.CharacterOccultistUIV10.actionRecords(source);
     const records = [];
     D.weaponAttacks(source).forEach(weapon => {
       const ammunition = weapon.ammunitionType ? D.ammunitionSummaryForWeapon(weapon, source) : null;
@@ -346,6 +347,21 @@
     return '';
   }
 
+  function weaponTags(item) {
+    const values = [...D.weaponProperties(item), ...(item.mastery ? [item.mastery] : [])];
+    return `<div class="weapon-tags">${[...new Set(values)].map(value => {
+      const description = window.CharacterRulesHelp.property(value);
+      return description ? `<details class="weapon-tag"><summary>${esc(value)}</summary><p>${esc(description)}</p></details>` : `<span class="chip">${esc(value)}</span>`;
+    }).join('')}</div>`;
+  }
+  window.CharacterWeaponTags = weaponTags;
+  function deathSavesPanel(source) {
+    if (Number(source.character.hp.current) > 0) return '';
+    const saves = source.character.deathSaves, disabled = saves.stable || saves.dead;
+    const dots = (key, label) => `<div class="death-save-line ${key}"><b>${label}</b><div>${[1,2,3].map(index => `<button type="button" class="death-dot ${index <= saves[key] ? 'filled' : ''}" data-death-save="${key}" data-count="${index <= saves[key] ? index - 1 : index}" aria-label="${label} ${index} of 3" aria-pressed="${index <= saves[key]}" ${disabled?'disabled':''}></button>`).join('')}</div></div>`;
+    return `<section class="death-saves-panel"><div class="section-head"><h2>DEATH SAVING THROWS</h2><span class="chip ${saves.dead?'danger':''}">${saves.dead?'DEAD':saves.stable?'STABLE':'UNCONSCIOUS'}</span></div>${dots('successes','Successes')}${dots('failures','Failures')}<label class="check-label"><input id="hpCriticalHit" type="checkbox"> Next damage at 0 HP is a Critical Hit (2 failures)</label><div class="death-save-actions"><button type="button" class="small-btn" data-death-natural="1" ${disabled?'disabled':''}>Natural 1 · 2 failures</button><button type="button" class="small-btn primary" data-death-natural="20" ${disabled?'disabled':''}>Natural 20 · 1 HP</button><button type="button" class="small-btn" data-death-stabilize ${disabled?'disabled':''}>Stabilize</button><button type="button" class="small-btn ghost" data-history-undo>Undo</button></div><small>10+ succeeds. Three successes: Stable. Three failures: Dead. Healing or stabilization clears both counters.</small></section>`;
+  }
+
   function actionCard(record, depth = 0) {
     const source = state();
     const open = source.ui.openActions.includes(record.id);
@@ -360,8 +376,8 @@
     const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(record.name)} and spend 1 ${esc(record.ammunition.type || 'ammunition')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span><small>${esc(record.ammunition.type || 'ammunition')}</small></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}" data-search-anchor="action:${esc(record.id)}">
-      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
-      <div class="row-detail">${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
+      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.rangeText ? `<span class="attack-range">RANGE ${esc(record.rangeText)}</span>` : ''}${record.damageType ? `<span class="attack-type">${esc(record.damageType)}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
+      <div class="row-detail">${record.weaponId ? weaponTags(record) : ''}${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
 
@@ -665,7 +681,7 @@
     const children = (context.children.get(item.id) || []).map(child => renderGearItem(child, context, depth + 1)).join('');
     return `<div class="gear-node depth-${Math.min(depth, 4)}"><article class="gear-card ${open ? 'open' : ''} ${equipped ? 'equipped' : ''} ${active ? 'active' : ''} ${item.isContainer ? 'container' : ''}" data-search-anchor="item:${esc(item.id)}">
       <div class="gear-heading"><button type="button" class="row-main" data-item-toggle="${esc(item.id)}"><span><span class="item-title-line"><strong>${esc(item.name)}</strong>${keyStats.length ? `<span class="item-key-stats">${keyStats.map(value => `<b>${esc(value)}</b>`).join('')}</span>` : ''}</span><span class="row-meta"><span>${esc(locationText)}</span>${status}${item.isContainer ? `<span class="container-chip ${containerLoad?.over ? 'over' : ''}">CONTAINER · ${(context.children.get(item.id) || []).length} items${containerLoad?.capacity != null ? ` · ${weightNumber(containerLoad.weight)}/${weightNumber(containerLoad.capacity)} lb` : ''}</span>` : ''}${ammunitionCount != null ? `<span class="ammo-count-chip">AMMO ${ammunitionCount}</span>` : consumable ? `<span class="consumable-chip">USES ${Math.max(0, Number(item.quantity) || 0)}</span>` : item.quantity > 1 ? `<span>×${item.quantity}</span>` : ''}<span class="item-weight" title="${esc(item.weightNote || '')}">${item.weightEstimated ? '~' : ''}${esc(weightLabel(stackWeight))}</span>${item.rarityLabel || item.rarity ? `<span>${esc(item.rarityLabel || item.rarity)}</span>` : ''}</span></span><span>›</span></button>${useButton}${equipButton}</div>
-      <div class="inventory-detail">${activationNote}${weightNote}${capacity}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="${consumable ? 0 : 1}" value="${consumable ? Math.max(0, Number(item.quantity) || 0) : item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${nl(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
+      <div class="inventory-detail">${activationNote}${weightNote}${capacity}${D.isWeapon(item) ? `<div class="weapon-overview"><b>RANGE ${esc(D.weaponRange(item))}</b><b>${esc(item.damageType || item.raw?.damage?.damage_type?.name || 'Damage type not specified')}</b></div>${weaponTags(item)}` : ''}<div class="form-grid two"><label>Location<select data-item-field="location" data-item-id="${esc(item.id)}">${itemLocationOptions(item.location)}</select></label>${ammunitionCount != null ? `<label>Bullets / rounds<input type="number" min="0" value="${ammunitionCount}" data-item-field="ammunitionCount" data-item-id="${esc(item.id)}"></label>` : `<label>Quantity<input type="number" min="${consumable ? 0 : 1}" value="${consumable ? Math.max(0, Number(item.quantity) || 0) : item.quantity || 1}" data-item-field="quantity" data-item-id="${esc(item.id)}"></label>`}<label>Stored in<select data-item-field="containerId" data-item-id="${esc(item.id)}">${itemContainerOptions(item, context)}</select></label><label class="check-label"><input type="checkbox" data-item-field="isContainer" data-item-id="${esc(item.id)}" ${item.isContainer ? 'checked' : ''}> Use as container</label>${item.attunement ? `<label class="check-label"><input type="checkbox" data-item-field="isAttuned" data-item-id="${esc(item.id)}" ${item.isAttuned ? 'checked' : ''}> Attuned</label>` : ''}</div>${fields || mechanicRows ? `<div class="formula-list">${fields}${mechanicRows}</div>` : ''}${item.description ? `<p>${rulesText(item.description)}</p>` : ''}${item.notes && item.notes !== item.description ? `<p class="item-notes"><b>Notes</b><br>${nl(item.notes)}</p>` : ''}<div class="detail-actions"><button type="button" class="small-btn" data-item-edit="${esc(item.id)}">Rename / edit</button><button type="button" class="small-btn danger" data-item-remove="${esc(item.id)}">Delete</button></div></div>
     </article>${children ? `<div class="container-children">${children}</div>` : ''}</div>`;
   }
 
@@ -1248,7 +1264,7 @@
       const sent = D.cpCoins(entry.sentCp), received = D.cpCoins(entry.receivedCp);
       return `<div class="exchange-history-row"><span><b>${esc(from.name)} → ${esc(to.name)}</b><small>${new Date(entry.at).toLocaleDateString()} · fee ${entry.feePercent}%</small></span><em>${sent.g} G ${sent.s} S ${sent.c} C<br>→ ${received.g} G ${received.s} S ${received.c} C</em></div>`;
     }).join('') || '<div class="empty">No exchanges yet.</div>';
-    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter a positive amount to add or a negative amount to remove.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" value="" placeholder="+ / −"></label>`).join('')}</div><button type="submit" class="primary money-apply">Apply change</button><details class="currency-exchange"><summary>Exchange currency</summary><div class="exchange-route"><span><small>FROM</small><b>${esc(active.name)}</b></span><i>→</i><label><small>TO</small><select id="exchangeCurrencyTo">${exchangeOptions}</select></label></div><div class="exchange-amounts">${[['G', 'gold'], ['S', 'silver'], ['C', 'copper']].map(([letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><input id="exchange${letter}" type="number" min="0" inputmode="numeric" value="" placeholder="0"></label>`).join('')}</div><label>Exchange fee (%)<input id="exchangeFee" type="number" min="0" max="100" step="0.5" value="0"></label><button type="button" class="small-btn primary" data-currency-exchange>Exchange</button><div class="exchange-history"><div class="dialog-subhead"><b>Recent exchanges</b><small>Stored with the character.</small></div>${transactions}</div></details><menu><button value="cancel" class="ghost">Close</button></menu></form>`;
+    $('#moneyDialog').innerHTML = `<form method="dialog" id="moneyForm"><div class="dialog-head"><strong>World Currencies</strong><button value="cancel" class="icon-btn" aria-label="Close">×</button></div><div class="currency-total"><span><small>TOTAL VALUE</small><b>${total.g} G · ${total.s} S · ${total.c} C</b></span><small>1 G = 10 S = 100 C</small></div><div class="currency-display-mode"><span>Top display</span><button type="button" class="filter-btn ${summary.mode === 'total' ? 'active' : ''}" data-currency-display="total">TOTAL VALUE</button><button type="button" class="filter-btn ${summary.mode === 'favorite' ? 'active' : ''}" data-currency-display="favorite">FAVORITE ONLY</button></div><div class="currency-owned"><div class="dialog-subhead"><b>Owned currencies</b><small>Tap an account to edit its actual coins.</small></div>${ownedRows}</div><label>Currency to manage<select id="moneyCurrencySelect">${currencyOptions}</select></label><div class="currency-editor-head"><span><b>${esc(active.name)}</b><small>${esc(active.region)}</small></span><button type="button" class="small-btn ${active.id === summary.favoriteId ? 'primary' : ''}" data-currency-favorite="${active.id}">${active.id === summary.favoriteId ? '★ Favorite' : '☆ Set favorite'}</button></div><p class="muted">Enter an amount, then choose Add or Remove.</p><div class="money-edit-grid">${[['g', 'G', 'gold'], ['s', 'S', 'silver'], ['c', 'C', 'copper']].map(([key, letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><span><b>${esc(active.denominations[key])}</b><small>Owned: ${Math.max(0, Number(wallet[key]) || 0)}</small></span><input id="money${key.toUpperCase()}Delta" type="number" inputmode="numeric" min="0" step="1" value="" placeholder="0"></label>`).join('')}</div><div class="money-change-actions"><button type="submit" name="moneyOperation" value="add" class="primary money-apply">+ Add</button><button type="submit" name="moneyOperation" value="remove" class="danger money-apply">− Remove</button></div><details class="currency-exchange"><summary>Exchange currency</summary><div class="exchange-route"><span><small>FROM</small><b>${esc(active.name)}</b></span><i>→</i><label><small>TO</small><select id="exchangeCurrencyTo">${exchangeOptions}</select></label></div><div class="exchange-amounts">${[['G', 'gold'], ['S', 'silver'], ['C', 'copper']].map(([letter, metal]) => `<label><i class="currency-coin ${metal}">${letter}</i><input id="exchange${letter}" type="number" min="0" inputmode="numeric" value="" placeholder="0"></label>`).join('')}</div><label>Exchange fee (%)<input id="exchangeFee" type="number" min="0" max="100" step="0.5" value="0"></label><button type="button" class="small-btn primary" data-currency-exchange>Exchange</button><div class="exchange-history"><div class="dialog-subhead"><b>Recent exchanges</b><small>Stored with the character.</small></div>${transactions}</div></details><menu><button value="cancel" class="ghost">Close</button></menu></form>`;
   }
 
   function openMoney() {
@@ -1500,7 +1516,7 @@
   }
 
   function parseImport(text) {
-    const payload = JSON.parse(text);
+    const payload = window.CharacterImport.validate(window.CharacterImport.parse(text));
     if (payload && Array.isArray(payload.profiles)) return { kind: 'roster', data: payload };
     if (payload?.character && payload?.classes) return { kind: 'native', data: payload };
     if (payload?.classKey === 'occultist' && payload?.sciences) return { kind: 'occultist', data: window.OccultistLegacyImportV10.convert(payload) };
@@ -1521,7 +1537,10 @@
     return parsed.kind;
   }
 
+  let importRequest = 0;
   function openImport() {
+    importRequest++;
+    $('#applyImport').disabled = false;
     $('#importText').value = '';
     $('#importFile').value = '';
     $('#importReport').textContent = 'Every import adds new characters, including roster files. Existing characters are never replaced.';
@@ -1731,6 +1750,10 @@
     if (mapNpc) { event.preventDefault(); openNpc(mapNpc.dataset.npcMapOpen); return; }
     const button = event.target.closest('button');
     if (!button) return;
+    if (button.dataset.deathSave) { C.setDeathSave(button.dataset.deathSave, button.dataset.count); return; }
+    if (button.dataset.deathNatural) { C.recordDeathSave(button.dataset.deathNatural); return; }
+    if (button.hasAttribute('data-death-stabilize')) { C.stabilize(); return; }
+
     const parentDialog = button.closest('dialog');
     if (parentDialog && button.value === 'cancel') {
       event.preventDefault();
@@ -1762,7 +1785,7 @@
     if (button.id === 'hpDamage' || button.id === 'hpHeal') {
       setHpAmount($('#hpAmountInput').value);
       if (button.id === 'hpDamage') {
-        const result = C.applyDamage(local.hpAmount, $('#hpDamageType').value);
+        const result = C.applyDamage(local.hpAmount, $('#hpDamageType').value, { critical:$('#hpCriticalHit')?.checked });
         const defense = result.steps.length ? ` (${result.steps.join(' → ')})` : '';
         toastUndo(`${result.applied} damage${defense}; ${result.absorbed} absorbed by Temp HP.`);
       } else {
@@ -2077,14 +2100,20 @@
     }
     if (target.id === 'importFile') {
       const file = target.files?.[0]; if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const kind = applyImportText(String(reader.result || ''));
-          closeDialog('#importDialog'); toast(`${kind} JSON imported as a new character.`);
-        } catch (error) { $('#importReport').textContent = error.message || 'This JSON could not be imported.'; }
-      };
-      reader.readAsText(file);
+      const request = ++importRequest;
+      $('#applyImport').disabled = true;
+      $('#importReport').textContent = `Reading ${file.name}…`;
+      window.CharacterImport.readFile(file).then(text => {
+        if (request !== importRequest || !$('#importDialog').open) return;
+        $('#importText').value = text;
+        const kind = applyImportText(text);
+        $('#importReport').textContent = `${file.name} imported as a new character.`;
+        closeDialog('#importDialog'); toast(`${kind} JSON imported as a new character.`);
+      }).catch(error => {
+        if (request === importRequest && $('#importDialog').open) $('#importReport').textContent = error.message;
+      }).finally(() => {
+        if (request === importRequest) { target.value = ''; $('#applyImport').disabled = false; }
+      });
     }
   }
 
@@ -2145,7 +2174,9 @@
       closeDialog('#bioDialog'); toast('Bio saved.'); return;
     }
     if (form.id === 'moneyForm') {
-      const applied = C.adjustCurrency(local.activeCurrencyId, { g: $('#moneyGDelta').value, s: $('#moneySDelta').value, c: $('#moneyCDelta').value });
+      const result = C.changeCurrency(local.activeCurrencyId, { g: $('#moneyGDelta').value, s: $('#moneySDelta').value, c: $('#moneyCDelta').value }, event.submitter?.value || 'add');
+      if (!result.ok) { toast(result.reason === 'funds' ? 'Not enough coins in this account. No money changed.' : 'Enter a positive whole number of coins.', 'warn'); return; }
+      const applied = result.applied;
       const summary = Object.entries(applied).filter(([, amount]) => amount).map(([coin, amount]) => `${amount > 0 ? '+' : ''}${amount} ${coin.toUpperCase()}`).join(' • ');
       renderMoneyDialog();
       if (summary) toastUndo(summary); else toast('No money changed.'); return;

@@ -20,7 +20,39 @@
 
   function update(mutator, reason) { return S.update(mutator, reason); }
 
-  function applyDamage(amount, damageType = '') {
+  function resetDeathSaves(character) {
+    if (character.deathSaves.unconsciousFromZero) character.conditions = character.conditions.filter(value => value !== 'Unconscious');
+    character.deathSaves = { successes: 0, failures: 0, stable: false, dead: false, unconsciousFromZero: false };
+  }
+  function fallUnconscious(character) {
+    if (!character.conditions.includes('Unconscious')) character.deathSaves.unconsciousFromZero = true;
+    character.conditions = unique([...character.conditions, 'Unconscious', 'Prone']);
+  }
+  function deathSaveProgress(character, kind, count) {
+    const saves = character.deathSaves;
+    saves[kind] = clamp(count, 0, 3);
+    if (saves.failures >= 3) { saves.dead = true; saves.stable = false; }
+    else if (saves.successes >= 3) { saves.stable = true; saves.successes = 0; saves.failures = 0; }
+  }
+  function setDeathSave(kind, count) {
+    const character = S.get().character;
+    if (character.hp.current > 0 || character.deathSaves.stable || character.deathSaves.dead || !['successes', 'failures'].includes(kind)) return false;
+    update(state => { deathSaveProgress(state.character, kind, count); }, 'hp:death-save');
+    return true;
+  }
+  function recordDeathSave(roll) {
+    const character = S.get().character, natural = Math.floor(number(roll));
+    if (character.hp.current > 0 || character.deathSaves.stable || character.deathSaves.dead || natural < 1 || natural > 20) return false;
+    if (natural === 20) { heal(1); return true; }
+    return setDeathSave(natural >= 10 ? 'successes' : 'failures', character.deathSaves[natural >= 10 ? 'successes' : 'failures'] + (natural === 1 ? 2 : 1));
+  }
+  function stabilize() {
+    if (S.get().character.hp.current > 0 || S.get().character.deathSaves.dead) return false;
+    update(state => { state.character.deathSaves.successes = 0; state.character.deathSaves.failures = 0; state.character.deathSaves.stable = true; }, 'hp:stabilize');
+    return true;
+  }
+
+  function applyDamage(amount, damageType = '', options = {}) {
     const requested = Math.max(0, Math.floor(number(amount)));
     let result = null;
     update(state => {
@@ -45,7 +77,17 @@
       const absorbed = Math.min(Math.max(0, number(hp.temp)), applied);
       hp.temp = Math.max(0, number(hp.temp) - absorbed);
       const hpDamage = Math.max(0, applied - absorbed);
-      hp.current = Math.max(0, number(hp.current) - hpDamage);
+      const before = number(hp.current);
+      hp.current = Math.max(0, before - hpDamage);
+      const saves = state.character.deathSaves;
+      if (!hp.current && applied > 0 && !saves.dead) {
+        if (hpDamage - before >= D.hpMax(state)) { saves.dead = true; saves.stable = false; }
+        else if (before === 0) {
+          saves.stable = false;
+          deathSaveProgress(state.character, 'failures', saves.failures + (options.critical ? 2 : 1));
+        }
+        fallUnconscious(state.character);
+      }
       result = { requested, damageType, applied, absorbed, hpDamage, steps, current: hp.current, temp: hp.temp };
     }, 'hp:damage');
     return result;
@@ -53,10 +95,12 @@
 
   function heal(amount) {
     let result = null;
+    if (S.get().character.deathSaves.dead) return { healed: 0, current: 0, max: D.hpMax(S.get()), reason: 'dead' };
     update(state => {
       const max = D.hpMax(state);
       const before = Math.max(0, number(state.character.hp.current));
       state.character.hp.current = Math.min(max, before + Math.max(0, Math.floor(number(amount))));
+      if (state.character.hp.current > 0) resetDeathSaves(state.character);
       result = { healed: state.character.hp.current - before, current: state.character.hp.current, max };
     }, 'hp:heal');
     return result;
@@ -67,7 +111,7 @@
   }
 
   function setHpCurrent(amount) {
-    update(state => { state.character.hp.current = clamp(amount, 0, D.hpMax(state)); }, 'hp:set-current');
+    update(state => { state.character.hp.current = clamp(amount, 0, D.hpMax(state)); if (state.character.hp.current > 0) resetDeathSaves(state.character); else fallUnconscious(state.character); }, 'hp:set-current');
   }
 
   function reconcileDerived() {
@@ -432,8 +476,7 @@
   }
 
   function occultistSpellAvailable(spell, source = S.get()) {
-    const classState = source.classes.occultist;
-    return (!spell.requiredLevel || D.level(source) >= spell.requiredLevel) && (!spell.scienceKey || number(classState.sciences[spell.scienceKey]) >= number(spell.scienceLevel, 1));
+    return window.CharacterOccultistSpells.known(source).some(value => value.id === spell.id);
   }
 
   function occultistSpellDefinition(spellId, source = S.get()) {
@@ -464,7 +507,8 @@
     const current = source.classes.occultist.spells.find(entry => entry.id === spellId);
     const preparing = !current?.prepared;
     const limit = definition.progressionAt(D.level(source)).prepared;
-    const prepared = source.classes.occultist.spells.filter(entry => entry.prepared && number(entry.definition?.level, definition.spells.find(item => item.id === entry.id)?.level) > 0).length;
+    if (!Number(spell.level) || window.CharacterOccultistSpells.alwaysPrepared(spell)) return { ok: true, prepared: true };
+    const prepared = window.CharacterOccultistSpells.preparedCount(source);
     if (preparing && spell.level > 0 && prepared >= limit) return { ok: false, reason: 'prepared', prepared, limit };
     update(state => {
       const list = state.classes.occultist.spells;
@@ -487,14 +531,11 @@
     const source = S.get(), definition = activeDefinition(source);
     const spell = occultistSpellDefinition(spellId, source);
     if (definition?.id !== 'occultist' || !spell || !occultistSpellAvailable(spell, source)) return { ok: false, reason: 'spell' };
-    if (!spell.level) return { ok: true, spell, slot: 0 };
-    const learned = source.classes.occultist.spells.find(entry => entry.id === spellId);
-    if (!learned?.prepared) return { ok: false, reason: 'prepared' };
-    const max = definition.progressionAt(D.level(source)).slots[spell.level - 1] || 0;
-    const used = number(source.classes.occultist.slotsUsed[spell.level]);
-    if (used >= max) return { ok: false, reason: 'slot', slot: spell.level };
-    adjustOccultistSlot(spell.level, 1);
-    return { ok: true, spell, slot: spell.level, remaining: max - used - 1 };
+    const status = window.CharacterOccultistSpells.castStatus(spell, source);
+    if (!status.ok) return status;
+    if (!status.slot) return { ok: true, spell, slot: 0 };
+    adjustOccultistSlot(status.slot, 1);
+    return { ok: true, spell, slot: status.slot, remaining: status.remaining - 1 };
   }
 
   function useOccultistResource(resourceId, delta = 1) {
@@ -1014,6 +1055,15 @@
     return applied;
   }
 
+  function changeCurrency(currencyId, values, operation) {
+    if (!['add', 'remove'].includes(operation)) return { ok: false, reason: 'amount' };
+    const amounts = Object.fromEntries(['g', 's', 'c'].map(coin => [coin, Number(values?.[coin] || 0)]));
+    if (Object.values(amounts).some(value => !Number.isSafeInteger(value) || value < 0) || !Object.values(amounts).some(Boolean)) return { ok: false, reason: 'amount' };
+    const wallet = S.get().character.gear.currencyWallets[currencyId] || { g:0,s:0,c:0 };
+    if (operation === 'remove' && Object.entries(amounts).some(([coin, amount]) => amount > Number(wallet[coin] || 0))) return { ok: false, reason: 'funds' };
+    return { ok: true, applied: adjustCurrency(currencyId, Object.fromEntries(Object.entries(amounts).map(([coin, amount]) => [coin, operation === 'remove' ? -amount : amount]))) };
+  }
+
   function exchangeCurrency(fromId, toId, values, feePercent = 0) {
     const from = GearRules?.CURRENCY_BY_ID?.has(fromId) ? fromId : '';
     const to = GearRules?.CURRENCY_BY_ID?.has(toId) ? toId : '';
@@ -1160,10 +1210,11 @@
     toggleFeatureUse, addRelic, removeRelic, toggleRelicPrepared, adjustRelicUse, setRelicChoice,
     setChoice, setClassSkills, setRollMode, addCondition, removeCondition, adjustExhaustion,
     addDefense, removeDefense, setSkillManual, applyOrigin, saveBuilder, saveQuickCharacter,
+    setDeathSave, recordDeathSave, stabilize,
     setOccultistScience, setOccultistChoice, toggleOccultistSpell, learnOccultistSpell, forgetOccultistSpell, adjustOccultistSlot, castOccultistSpell, useOccultistResource, completeOccultistDawn, restoreOccultistSlotWithHp,
     craftOccultistExperiment, startPotionProject, progressPotionProject, cancelPotionProject,
     addItem, updateItem, moveItem, setItemEquipped, removeItem, useConsumable, saveLoadout, applyLoadout, deleteLoadout, spendAmmunition, executeAction, levelUp, setEncumbranceMode, startingGearStatus, setStartingGearBudget, purchaseStartingItem, finalizeStartingGear, refundStartingItem,
-    setMoney, adjustMoney, adjustCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
+    setMoney, adjustMoney, adjustCurrency, changeCurrency, exchangeCurrency, setFavoriteCurrency, setCurrencyDisplayMode, setOtherPossessions, addCustomAction, removeCustomAction,
     toggleFavorite, toggleOpen, saveNpc, deleteNpc, toggleNpcFavorite, saveJournalEntry, deleteJournalEntry, toggleJournalFavorite, saveBio, setUi
   };
 })();
