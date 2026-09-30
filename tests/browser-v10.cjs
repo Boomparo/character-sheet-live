@@ -74,7 +74,7 @@ async function verify(browser,base,mobile) {
   assert.equal(await page.evaluate(()=>CharacterState.get().character.deathSaves.successes),1);
   await page.locator('[data-death-natural="1"]').click();
   assert.equal(await page.evaluate(()=>CharacterState.get().character.deathSaves.failures),2);
-  await page.locator('.death-saves-panel').scrollIntoViewIfNeeded();
+  await page.locator('.death-saves-panel').evaluate(node=>node.scrollIntoView({block:'center'}));
   await page.screenshot({path:path.join(output,`${name}-death-saves.png`)});
   await page.locator('[data-death-natural="20"]').click();
   assert.equal(await page.locator('.death-saves-panel').count(),0);
@@ -131,7 +131,7 @@ async function verifyUpgrade(browser,base) {
 
 (async()=>{
   fs.mkdirSync(output,{recursive:true});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,headless:true,proxy:process.env.BROWSER_PROXY_SERVER?{server:process.env.BROWSER_PROXY_SERVER}:undefined,args:['--no-sandbox','--disable-dev-shm-usage',...(process.env.BROWSER_PROXY_SERVER?['--ignore-certificate-errors']:[])]});
   try {const base=process.env.APP_URL||`http://127.0.0.1:${server.address().port}/`;await verify(browser,base,false);await verify(browser,base,true);if(process.env.BASELINE_DIR&&!process.env.APP_URL)await verifyUpgrade(browser,base);}
   finally {await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});
