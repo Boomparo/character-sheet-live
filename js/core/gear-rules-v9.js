@@ -2,19 +2,19 @@
   'use strict';
 
   const WORLD_CURRENCIES = [
-    { id: 'generic', region: 'Nezařazené', name: 'Obecná herní měna', denominations: { g: 'Zlaťák', s: 'Stříbrňák', c: 'Měďák' } },
-    { id: 'united-kingdom', region: 'Spojené království', name: 'Libra šterlinků', denominations: { g: 'Sovereign', s: 'Libra', c: 'Pence (Penny)' } },
-    { id: 'france-monaco', region: 'Francie, Monako', name: 'Francouzský a monacký frank', denominations: { g: 'Zlatý frank', s: 'Stříbrný frank', c: 'Centim' } },
-    { id: 'belgium-switzerland', region: 'Belgie, Švýcarsko', name: 'Belgický a švýcarský frank', denominations: { g: 'Zlatý frank', s: 'Stříbrný frank', c: 'Centim' } },
-    { id: 'spain', region: 'Španělské království', name: 'Španělská peseta', denominations: { g: 'Zlatá peseta', s: 'Stříbrná peseta', c: 'Céntimo' } },
-    { id: 'germany', region: 'Německé císařství', name: 'Marka', denominations: { g: 'Zlatá marka', s: 'Stříbrná marka', c: 'Fenik (měďák)' } },
-    { id: 'austria-hungary', region: 'Rakousko-Uhersko, Lichtenštejnsko', name: 'Rakousko-uherská koruna', denominations: { g: 'Zlatá koruna', s: 'Stříbrná koruna', c: 'Haléř' } },
-    { id: 'italy', region: 'Italské království', name: 'Italská lira', denominations: { g: 'Zlatá lira', s: 'Stříbrná lira', c: 'Centesimo' } },
-    { id: 'romania', region: 'Rumunsko', name: 'Lei', denominations: { g: 'Zlatý leu (pl. lei)', s: 'Stříbrný leu', c: 'Ban (pl. bani)' } },
-    { id: 'russia', region: 'Ruské impérium', name: 'Rubl', denominations: { g: 'Zlatý rubl', s: 'Stříbrný rubl', c: 'Kopějka' } },
-    { id: 'ottoman-empire', region: 'Osmanská říše', name: 'Lira', denominations: { g: 'Zlatá lira', s: 'Stříbrná lira', c: 'Kuruş' } },
-    { id: 'greece', region: 'Řecko', name: 'Drachma', denominations: { g: 'Zlatá drachma', s: 'Stříbrná drachma', c: 'Lepton (pl. lepta)' } },
-    { id: 'usa', region: 'USA', name: 'Americký dolar', denominations: { g: 'Dolar', s: 'Dime', c: 'Cent' } }
+    { id: 'generic', region: 'Unsorted', name: 'Generic currency', denominations: { g: 'Gold', s: 'Silver', c: 'Copper' } },
+    { id: 'united-kingdom', region: 'United Kingdom', name: 'Pound sterling', denominations: { g: 'Sovereign', s: 'Pound', c: 'Pence (Penny)' } },
+    { id: 'france-monaco', region: 'France, Monaco', name: 'French and Monegasque franc', denominations: { g: 'Gold franc', s: 'Silver franc', c: 'Centime' } },
+    { id: 'belgium-switzerland', region: 'Belgium, Switzerland', name: 'Belgian and Swiss franc', denominations: { g: 'Gold franc', s: 'Silver franc', c: 'Centime' } },
+    { id: 'spain', region: 'Kingdom of Spain', name: 'Spanish peseta', denominations: { g: 'Gold peseta', s: 'Silver peseta', c: 'Céntimo' } },
+    { id: 'germany', region: 'German Empire', name: 'Mark', denominations: { g: 'Gold mark', s: 'Silver mark', c: 'Pfennig (copper)' } },
+    { id: 'austria-hungary', region: 'Austria-Hungary, Liechtenstein', name: 'Austro-Hungarian krone', denominations: { g: 'Gold krone', s: 'Silver krone', c: 'Heller' } },
+    { id: 'italy', region: 'Kingdom of Italy', name: 'Italian lira', denominations: { g: 'Gold lira', s: 'Silver lira', c: 'Centesimo' } },
+    { id: 'romania', region: 'Romania', name: 'Leu', denominations: { g: 'Gold leu (pl. lei)', s: 'Silver leu', c: 'Ban (pl. bani)' } },
+    { id: 'russia', region: 'Russian Empire', name: 'Ruble', denominations: { g: 'Gold ruble', s: 'Silver ruble', c: 'Kopeck' } },
+    { id: 'ottoman-empire', region: 'Ottoman Empire', name: 'Lira', denominations: { g: 'Gold lira', s: 'Silver lira', c: 'Kuruş' } },
+    { id: 'greece', region: 'Greece', name: 'Drachma', denominations: { g: 'Gold drachma', s: 'Silver drachma', c: 'Lepton (pl. lepta)' } },
+    { id: 'usa', region: 'USA', name: 'US dollar', denominations: { g: 'Dollar', s: 'Dime', c: 'Cent' } }
   ];
   const CURRENCY_BY_ID = new Map(WORLD_CURRENCIES.map(currency => [currency.id, currency]));
 

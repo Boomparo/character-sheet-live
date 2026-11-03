@@ -99,9 +99,9 @@ async function verify(browser,base,mobile) {
   assert.equal(await page.evaluate(()=>CharacterRoster.list().length),count);
   await page.locator('#importDialog [value="cancel"]').first().click();
   await page.waitForFunction(()=>navigator.serviceWorker.controller);
-  const caches=await page.evaluate(()=>window.caches.keys());assert.deepEqual(caches,['character-sheet-v10-english-features-0']);
+  const caches=await page.evaluate(()=>window.caches.keys());assert.deepEqual(caches,['character-sheet-v10-english-features-1']);
   await context.setOffline(true);await page.reload();
-  await page.waitForFunction(()=>window.CharacterState?.APP_VERSION==='10.2.0-english-features');
+  await page.waitForFunction(()=>window.CharacterState?.APP_VERSION==='10.2.1-english-features');
   assert.equal(await page.evaluate(()=>CharacterState.get().character.name),'Český šotek');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth),false,'No horizontal overflow');
   assert.deepEqual(errors,[],'No browser runtime errors');
@@ -115,17 +115,17 @@ async function verifyUpgrade(browser,base) {
   await page.evaluate(()=>CharacterState.update(state=>{state.character.name='Tazio Upgrade';state.character.hp.current=7;}));
   const id=await page.evaluate(()=>CharacterRoster.activeId());
   await page.waitForFunction(()=>navigator.serviceWorker.controller);
-  const oldKeys=(await page.evaluate(()=>caches.keys())).filter(key=>key.startsWith('character-sheet-')&&key!=='character-sheet-v10-english-features-0');
+  const oldKeys=(await page.evaluate(()=>caches.keys())).filter(key=>key.startsWith('character-sheet-')&&key!=='character-sheet-v10-english-features-1');
   assert.ok(oldKeys.length>0);
   await page.evaluate(async()=>{const cache=await caches.open('another-app');await cache.put('/other-app',new Response('keep'));});
   servingRoot=root;
-  await page.reload();await page.waitForFunction(()=>CharacterState.APP_VERSION==='10.2.0-english-features');
-  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('10.2.0'));
+  await page.reload();await page.waitForFunction(()=>CharacterState.APP_VERSION==='10.2.1-english-features');
+  await page.waitForFunction(()=>navigator.serviceWorker.controller?.scriptURL.includes('10.2.1'));
   await page.waitForFunction(async oldKeys=>{const keys=await caches.keys();return oldKeys.every(key=>!keys.includes(key));},oldKeys);
-  const keys=await page.evaluate(()=>caches.keys());assert.ok(keys.includes('another-app'));assert.ok(keys.includes('character-sheet-v10-english-features-0'));
+  const keys=await page.evaluate(()=>caches.keys());assert.ok(keys.includes('another-app'));assert.ok(keys.includes('character-sheet-v10-english-features-1'));
   assert.equal(await page.evaluate(()=>CharacterRoster.activeId()),id);
   assert.equal(await page.evaluate(()=>CharacterState.get().character.hp.current),7);
-  await context.setOffline(true);await page.reload();await page.waitForFunction(()=>CharacterState.APP_VERSION==='10.2.0-english-features');
+  await context.setOffline(true);await page.reload();await page.waitForFunction(()=>CharacterState.APP_VERSION==='10.2.1-english-features');
   assert.equal(await page.evaluate(()=>CharacterState.get().character.name),'Tazio Upgrade');
   await context.close();console.log('PWA upgrade: old cache removed, other app cache kept, Tazio preserved and new version works offline');
 }

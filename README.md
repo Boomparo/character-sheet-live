@@ -55,7 +55,7 @@ CHROMIUM_PATH=/path/to/chromium LILI_JSON_PATH=/path/to/Lili_169.json node tests
 
 `tests/fixtures/Lili_169.json` preserves the supplied legacy data with portrait artwork omitted. The full original attachment was also verified with `LILI_JSON_PATH`. Death Save and weapon property behavior follows the 2024 [Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game) and [Equipment](https://www.dndbeyond.com/sources/dnd/br-2024/equipment) rules.
 
-## V10.2.0: English rules and compact feature families
+## V10.2.1: English rules and compact feature families
 
 - The built-in Treasure Hunter, Occultist, relic and science descriptions have complete English presentations. Stored source records, IDs, preparation, character names, custom content and notes retain their original values.
 - Features defaults to grouped ability cards. Related rules and upgrades are nested inside the parent, passive/setup rules are collapsed, and starred families appear first. Overview, progression, active/passive filters and searches in English or original names share the same model for both classes.

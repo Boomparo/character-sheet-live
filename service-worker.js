@@ -1,19 +1,19 @@
-const CACHE = 'character-sheet-v10-english-features-0';
+const CACHE = 'character-sheet-v10-english-features-1';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/v7s.css', './css/ux-v7s.css', './css/modular-v7s.css', './css/enhancements-v7s.css',
-  './css/compact-ux-v7s.css', './css/gameplay-polish-v7s.css', './css/v9.css?v=10.2.0',
+  './css/compact-ux-v7s.css', './css/gameplay-polish-v7s.css', './css/v9.css?v=10.2.1',
   './js/classes/treasure-hunter/data-v7s.js', './js/classes/treasure-hunter/relics-v7s.js',
-  './js/classes/treasure-hunter/choices-v7s.js', './js/core/gear-rules-v9.js?v=10.1.1', './js/core/homebrew-library-v10.js?v=10.1.1',
+  './js/classes/treasure-hunter/choices-v7s.js', './js/core/gear-rules-v9.js?v=10.2.1', './js/core/homebrew-library-v10.js?v=10.1.1',
   './js/classes/treasure-hunter/content-v9.js?v=10.1.1', './js/classes/class-registry-v10.js?v=10.1.1',
   './js/classes/treasure-hunter/register-v10.js?v=10.1.1', './js/classes/occultist/data-v10.js?v=10.1.1', './js/classes/occultist/full-rules-v10.js?v=10.1.1',
-  './js/core/spell-catalog-v10.js?v=10.2.0', './js/core/state-v9.js?v=10.2.0', './js/core/rules-2024.js?v=10.1.1', './js/core/origin-v9.js?v=10.1.1',
+  './js/core/spell-catalog-v10.js?v=10.2.1', './js/core/state-v9.js?v=10.2.1', './js/core/rules-2024.js?v=10.1.1', './js/core/origin-v9.js?v=10.1.1',
   './js/core/derived-v9.js?v=10.1.5', './js/core/commands-v9.js?v=10.1.5', './js/core/roster-v9.js?v=10.1.3',
   './js/classes/occultist/import-v10.js?v=10.1.5', './js/core/catalog-srd.js?v=10.1.1', './js/ui/portrait-cropper.js?v=10.1.1',
-  './js/ui/app-v9.js?v=10.2.0', './js/ui/occultist-v10.js?v=10.2.0',
-  './js/core/import-v10.js?v=10.1.5', './js/core/rules-help-v10.js?v=10.2.0', './js/classes/occultist/spells-v10.js?v=10.1.5',
-  './js/core/rules-english-v10.js?v=10.2.0', './js/core/rules-english-occult-v10.js?v=10.2.0',
-  './js/core/rules-english-relics-v10.js?v=10.2.0', './js/core/feature-library-v10.js?v=10.2.0',
+  './js/ui/app-v9.js?v=10.2.1', './js/ui/occultist-v10.js?v=10.2.1',
+  './js/core/import-v10.js?v=10.1.5', './js/core/rules-help-v10.js?v=10.2.1', './js/classes/occultist/spells-v10.js?v=10.1.5',
+  './js/core/rules-english-v10.js?v=10.2.1', './js/core/rules-english-occult-v10.js?v=10.2.1',
+  './js/core/rules-english-relics-v10.js?v=10.2.1', './js/core/feature-library-v10.js?v=10.2.1',
   './assets/icon.svg', './assets/treasure-ornament.svg'
 ];
 
