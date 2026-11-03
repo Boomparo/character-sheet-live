@@ -58,7 +58,7 @@
   ]);
 
   const local = {
-    featureSearch: '', catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
+    catalogQuery: '', catalogRarity: 'all', catalogKind: 'all',
     catalogTags: new Set(), catalogMode: 'inventory', hpAmount: 1, pendingPortrait: '', pendingNpcImage: '', pendingNpcThumbnail: '',
     pendingNpcRelations: [], activeNpcId: '', activeItemId: '', activeCurrencyId: 'generic', restMode: 'short', restHitDice: 0,
     builderTab: 'setup', levelUpStep: 0, levelUpSelections: {}, catalogItems: [], activeActionId: '', activeJournalId: '', exchangeToId: '', searchResults: [],
@@ -100,7 +100,8 @@
   }
 
   function rulesText(value, source = state()) {
-    let text = window.CharacterRulesHelp.text(normalizedCoolText(value));
+    let text = window.CharacterFeatureLibrary.annotate(window.CharacterRulesHelp.text(normalizedCoolText(value)),source);
+    text = text.replace(/\b(\d+) Cool (?:die|dice)\b(?!\s*\()/g, (match,count)=>`${match} (${coolDice(Number(count),source)})`);
     const quantities = [
       [5, /(pěti\s+hodům|pět\s+hodů)\s+Cool die(?!\s*\()/gi],
       [4, /(čtyřem\s+hodům|čtyři\s+hody)\s+Cool die(?!\s*\()/gi],
@@ -227,7 +228,7 @@
     const defenseRows = [
       ['resistance', 'Resistances', defenses.resistances], ['immunity', 'Immunities', defenses.immunities],
       ['vulnerability', 'Vulnerabilities', defenses.vulnerabilities], ['conditionImmunity', 'Condition Immunities', defenses.conditionImmunities]
-    ].map(([key, label, values]) => `<div class="defense-line"><b>${label}</b><div class="source-list">${values.map(entry => `<span class="source-entry"><span>${esc(entry.name)}</span><small>${esc(entry.sources.join(' · '))}</small>${entry.sources.includes('Manual') ? `<button type="button" data-defense-remove="${key}:${esc(entry.name)}" aria-label="Remove ${esc(entry.name)}">×</button>` : ''}</span>`).join('') || '<span class="muted">—</span>'}</div></div>`).join('');
+    ].map(([key, label, values]) => `<div class="defense-line"><b>${label}</b><div class="source-list">${values.map(entry => `<span class="source-entry"><span>${esc(entry.name)}</span><small>${esc(entry.sources.map(ruleLabel).join(' · '))}</small>${entry.sources.includes('Manual') ? `<button type="button" data-defense-remove="${key}:${esc(entry.name)}" aria-label="Remove ${esc(entry.name)}">×</button>` : ''}</span>`).join('') || '<span class="muted">—</span>'}</div></div>`).join('');
     const damageOptions = Rules.DAMAGE_TYPES.map(([key, label]) => `<option value="${esc(key)}">${esc(label)}</option>`).join('');
     const conditionImmunityOptions = Object.keys(Rules.CONDITIONS).map(key => `<option value="${esc(key)}">${esc(Rules.conditionName(key))}</option>`).join('');
     const species = Origin.species(source);
@@ -240,7 +241,7 @@
     const hasRelics = D.subclassHasSystem('relics', source);
     const luck = background.feat === 'Lucky' ? (() => {
       const max = D.pb(source), left = Math.max(0, max - (Number(background.luckUsed) || 0));
-      return section('Lucky', `<p class="muted">${esc(feat.description)}</p><div class="cool-dots">${Array.from({ length: max }, (_, i) => `<button type="button" class="cool-dot ${i < left ? 'filled' : ''}" data-luck-adjust="${i < left ? 1 : -1}"></button>`).join('')}</div>`, `<span class="eyebrow">${left}/${max}</span>`, 'luck-section');
+      return section('Lucky', `<p class="muted">${esc(ruleLabel(feat.description))}</p><div class="cool-dots">${Array.from({ length: max }, (_, i) => `<button type="button" class="cool-dot ${i < left ? 'filled' : ''}" data-luck-adjust="${i < left ? 1 : -1}"></button>`).join('')}</div>`, `<span class="eyebrow">${left}/${max}</span>`, 'luck-section');
     })() : '';
 
     $('#characterPage').innerHTML = `${pageIntro('CHARACTER', 'Combat overview and canonical stats')}
@@ -368,16 +369,16 @@
     const favorite = source.ui.favoriteActions.includes(record.id);
     const roll = record.isAttack ? rollIndicator(D.effectiveRollMode('attack', record.ability || '', source)) : '';
     const hasHit = record.hit !== undefined && record.hit !== null && record.hit !== '';
-    const mastery = record.mastery ? `<div class="mastery-callout"><b>MASTERY · ${esc(record.mastery)}</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.join(' · '))}</small>` : ''}</div>` : '';
-    const effects = (record.effects || []).map(effect => `<div class="action-effect"><b>${esc(effect.name)}</b><span>${nl(effect.summary || '')}</span><small>${esc(effect.source || '')}</small></div>`).join('');
+    const mastery = record.mastery ? `<div class="mastery-callout"><b>MASTERY · ${esc(record.mastery)}</b><span>${nl(record.masteryDescription || Rules.MASTERY_PROPERTIES?.[record.mastery] || 'See the weapon Mastery Property.')}</span>${record.masterySources?.length ? `<small>Granted by ${esc(record.masterySources.map(ruleLabel).join(' · '))}</small>` : ''}</div>` : '';
+    const effects = (record.effects || []).map(effect => `<div class="action-effect"><b>${esc(effect.name)}</b><span>${nl(effect.summary || '')}</span><small>${esc(ruleLabel(effect.source || ''))}</small></div>`).join('');
     const breakdown = record.attackBreakdown?.length ? `<details class="attack-breakdown"><summary>Attack calculation</summary><div class="formula-list">${record.attackBreakdown.map(([label, value]) => `<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div></details>` : '';
     const fullDamage = record.damage ? `<div class="action-damage-detail"><b>DAMAGE</b><span>${esc(record.damage)}</span></div>` : '';
-    const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(record.name)}"><b>${record.cost}</b><span>COOL</span></button>` : '';
-    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(record.name)} and spend 1 ${esc(record.ammunition.type || 'ammunition')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span><small>${esc(record.ammunition.type || 'ammunition')}</small></button>` : '';
+    const coolButton = record.cost ? `<button type="button" class="action-cool-spend" data-action-use="${esc(record.id)}" aria-label="Spend ${record.cost} Cool Point${record.cost === 1 ? '' : 's'} for ${esc(ruleLabel(record.name))}"><b>${record.cost}</b><span>COOL</span></button>` : '';
+    const ammunitionButton = record.ammunition ? `<button type="button" class="action-ammo-spend" data-action-use="${esc(record.id)}" ${record.ammunition.total > 0 ? '' : 'disabled'} aria-label="Attack with ${esc(ruleLabel(record.name))} and spend 1 ${esc(record.ammunition.type || 'ammunition')}"><b>${record.ammunition.total}</b><span>${record.ammunition.total > 0 ? 'ATTACK · −1' : 'EMPTY'}</span><small>${esc(record.ammunition.type || 'ammunition')}</small></button>` : '';
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}" data-search-anchor="action:${esc(record.id)}">
-      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(record.name)}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(record.source || '')}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.rangeText ? `<span class="attack-range">RANGE ${esc(record.rangeText)}</span>` : ''}${record.damageType ? `<span class="attack-type">${esc(record.damageType)}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
-      <div class="row-detail">${record.weaponId ? weaponTags(record) : ''}${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
+      <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(ruleLabel(record.name))}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(ruleLabel(record.source || ''))}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.rangeText ? `<span class="attack-range">RANGE ${esc(record.rangeText)}</span>` : ''}${record.damageType ? `<span class="attack-type">${esc(record.damageType)}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
+      <div class="row-detail">${record.featureId?featureFactsHtml(T.features.find(feature=>feature.id===record.featureId)||record,source):''}${record.weaponId ? weaponTags(record) : ''}${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
 
@@ -421,7 +422,7 @@
       <label>Distance<select data-tactics-field="range">${options([['engaged', 'Engaged'], ['near', 'Near'], ['far', 'Far']], context.range)}</select></label>
       <label>Enemies<select data-tactics-field="enemies">${options([['single', 'One target'], ['group', 'Group']], context.enemies)}</select></label>
       <label>Goal<select data-tactics-field="goal">${options([['damage', 'Damage'], ['control', 'Control'], ['defence', 'Defence'], ['escape', 'Escape']], context.goal)}</select></label>
-    </div><div class="tactics-results">${recommendations.map((entry, index) => `<button type="button" class="tactic-result" data-tactic-action="${esc(entry.record.id)}"><i>${index + 1}</i><span><b>${esc(entry.record.name)}</b><small>${esc(entry.reasons.join(' · ') || 'Available option')}</small></span><em>${esc(actionCode(entry.record.action))}</em></button>`).join('') || '<div class="empty">No usable action matches this situation.</div>'}</div><p class="tactics-note">Suggestions use your current HP, Conditions, Cool, ammunition and available actions. They are guidance, not an automatic rules decision.</p>`;
+    </div><div class="tactics-results">${recommendations.map((entry, index) => `<button type="button" class="tactic-result" data-tactic-action="${esc(entry.record.id)}"><i>${index + 1}</i><span><b>${esc(ruleLabel(entry.record.name))}</b><small>${esc(entry.reasons.join(' · ') || 'Available option')}</small></span><em>${esc(actionCode(entry.record.action))}</em></button>`).join('') || '<div class="empty">No usable action matches this situation.</div>'}</div><p class="tactics-note">Suggestions use your current HP, Conditions, Cool, ammunition and available actions. They are guidance, not an automatic rules decision.</p>`;
   }
 
   function openTactics() { renderTacticsDialog(); showDialog('#tacticsDialog'); }
@@ -465,12 +466,12 @@
       return `<div class="skill-row"><button type="button" class="prof-dot ${status === 2 ? 'expert' : status === 1 ? 'prof' : ''}" data-skill-edit="${esc(name)}" aria-label="Edit ${esc(name)} proficiency">${status === 2 ? '◆' : status === 1 ? '●' : '○'}</button><button type="button" class="skill-name" data-stat-detail="skill:${esc(name)}">${esc(name)}</button><span class="skill-ability">${ability}</span><span class="skill-mod">${S.signed(D.skillMod(name, source))}</span><span class="skill-roll-hints">${situationalIndicator(situational)}${rollIndicator(mode)}</span></div>`;
     }).join('');
     const entries = D.proficiencyEntries(source);
-    const details = (label, values) => `<details class="proficiency"><summary>${esc(label)} <small>${values.length}</small></summary><div class="prof-body source-list">${values.map(entry => `<span class="source-entry"><span>${esc(entry.name)}</span>${entry.description ? `<p>${nl(entry.description)}</p>` : ''}<small>${esc(entry.sources.join(' · ') || 'Manual')}</small></span>`).join('') || '<span class="muted">—</span>'}</div></details>`;
+    const details = (label, values) => `<details class="proficiency"><summary>${esc(label)} <small>${values.length}</small></summary><div class="prof-body source-list">${values.map(entry => `<span class="source-entry"><span>${esc(ruleLabel(entry.name))}</span>${entry.description ? `<p>${nl(entry.description)}</p>` : ''}<small>${esc(entry.sources.map(ruleLabel).join(' · ') || 'Manual')}</small></span>`).join('') || '<span class="muted">—</span>'}</div></details>`;
     $('#skillsPage').innerHTML = `${pageIntro('SKILLS', 'Rolls, training and grant sources')}${section('Skills', rows, '', 'skills-list-section')}${section('Proficiencies & Masteries', `${details('Armor', entries.armor)}${details('Weapons', entries.weapons)}${details('Masteries', entries.masteries)}${details('Tools', entries.tools)}${details('Vehicles', entries.vehicles)}${details('Languages', entries.languages)}${details('Senses', entries.senses)}<button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`, '', 'proficiencies-section')}`;
   }
 
   function choiceOptions(definition, selected, source, allSelections = [], index = 0) {
-    const option = value => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''} ${definition.unique && allSelections.some((choice, choiceIndex) => choiceIndex !== index && choice === value) ? 'disabled' : ''}>${esc(value)}</option>`;
+    const option = value => `<option value="${esc(value)}" ${value === selected ? 'selected' : ''} ${definition.unique && allSelections.some((choice, choiceIndex) => choiceIndex !== index && choice === value) ? 'disabled' : ''}>${esc(ruleLabel(value))}</option>`;
     if (definition.type === 'select') return (T[definition.source] || []).map(option).join('');
     if (definition.type === 'skill') return Object.keys(D.SKILLS).filter(name => D.skillStatus(name, source) > 0).map(option).join('');
     if (definition.type === 'weapon') {
@@ -490,9 +491,9 @@
       if (BUILDER_MANAGED_CHOICES.has(definition.key)) {
         const chosen = values.filter(Boolean);
         const labels = definition.key === 'weaponMasteries' ? chosen.map(weaponChoiceLabel) : chosen;
-        return `<div class="choice-field choice-summary"><b>${esc(definition.label)}</b><span>${labels.length ? esc(labels.join(' · ')) : 'Not chosen'}</span><small>Canonical selection in Character Builder</small><button type="button" class="small-btn" data-open-builder>Edit selection</button></div>`;
+        return `<div class="choice-field choice-summary"><b>${esc(ruleLabel(definition.label))}</b><span>${labels.length ? esc(labels.map(ruleLabel).join(' · ')) : 'Not chosen'}</span><small>Canonical selection in Character Builder</small><button type="button" class="small-btn" data-open-builder>Edit selection</button></div>`;
       }
-      return `<div class="choice-field"><b>${esc(definition.label)}</b>${Array.from({ length: definition.count }, (_, index) => {
+      return `<div class="choice-field"><b>${esc(ruleLabel(definition.label))}</b>${Array.from({ length: definition.count }, (_, index) => {
         const selected = values[index] || '';
         if (['select', 'skill', 'weapon'].includes(definition.type)) return `<select data-feature-choice="${esc(definition.key)}" data-choice-index="${index}"><option value="">Choose…</option>${choiceOptions(definition, selected, source, values, index)}</select>`;
         return `<input data-feature-choice="${esc(definition.key)}" data-choice-index="${index}" value="${esc(selected)}" placeholder="${esc(definition.placeholder || '')}">`;
@@ -508,60 +509,63 @@
     });
   }
 
-  function featureCard(feature, depth = 0) {
-    const source = state();
-    const open = source.ui.openFeatures.includes(feature.id);
+  const FeatureLibrary = window.CharacterFeatureLibrary;
+  const ruleLabel = value => window.CharacterRulesHelp.text(value);
+  function featureFactsHtml(feature, source, family = null) {
+    const facts=FeatureLibrary.facts(feature,source), values=new Set(facts.map(fact=>fact.value));
+    const related=(family?.members || []).filter(member=>member.id!==feature.id).sort((a,b)=>Number(source.ui.favoriteFeatures.includes(b.id))-Number(source.ui.favoriteFeatures.includes(a.id)));
+    for(const member of related) { if(facts.length>=4)break; for(const fact of FeatureLibrary.facts(member,source))if(facts.length<4&&!values.has(fact.value)){facts.push(fact);values.add(fact.value);} }
+    return `<div class="feature-facts">${facts.map(fact=>`<span><small>${esc(fact.label)}</small><b>${esc(fact.value)}</b></span>`).join('')}</div>`;
+  }
+  function featureCard(feature, depth = 0, children = '', family = null) {
+    const source = state(), members=family?.members || [feature];
+    const open = FeatureLibrary.isOpen(feature.id,source);
     const favorite = source.ui.favoriteFeatures.includes(feature.id);
-    const used = Number(source.classes.treasureHunter.featureUses?.[feature.id]) || 0;
-    const choiceMissing = feature.level <= D.level(source) && featureChoiceIncomplete(feature, source);
+    const choiceMissing = source.character.classKey==='treasureHunter' && members.some(member=>member.level<=D.level(source)&&featureChoiceIncomplete(member,source));
     const subclassFeature = D.featureSubclassDefinition(feature);
-    const damageBonus = featureDamageBadge(feature.id, source);
-    return `<article class="row-card feature-card ${open ? 'open' : ''} depth-${Math.min(depth, 3)} ${feature.level > D.level(source) ? 'locked' : ''} ${choiceMissing ? 'choice-missing' : ''}" data-search-anchor="feature:${esc(feature.id)}">
-      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}"><span><span class="action-title-line"><strong>${esc(feature.name)}</strong>${damageBonus ? `<b class="damage-bonus-chip">${esc(damageBonus)}</b>` : ''}</span><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature ? `<span>${esc(subclassFeature.name)}</span>` : ''}${feature.kind === 'origin' ? `<span>${esc(feature.source || 'Origin')}</span>` : ''}<span class="badge">${esc(actionCode(feature.action))}</span>${feature.cost ? `<span class="feature-cool-cost">${feature.cost} COOL</span>` : ''}</span></span><span>›</span></button><button type="button" class="favorite ${favorite ? 'on' : ''}" data-feature-favorite="${esc(feature.id)}">★</button></div>
-      <div class="row-detail">${rulesText(feature.fullText || feature.summary, source)}${featureChoices(feature, source)}${feature.uses ? `<div class="charge-row"><span>${Math.max(0, feature.uses - used)}/${feature.uses} uses</span><button type="button" class="small-btn" data-feature-use="${esc(feature.id)}" data-delta="${used < feature.uses ? 1 : -1}">${used < feature.uses ? 'Use' : 'Restore'}</button></div>` : ''}</div>
+    const actions=[...new Set(members.map(member=>member.action).filter(action=>!['Passive','Resource'].includes(action)))];
+    const action=feature.id==='occult-spellcasting'?'SPELLCASTING':actions.length?actions.map(value=>value==='Other'?'TRIGGERED':value==='Free'?'NO ACTION':actionCode(value)).join(' / '):feature.action==='Resource'?'RESOURCE':'PASSIVE';
+    const resourceIds={'third-eye':'thirdEye','chakra-tuning':'chakra','magic-block':'magBlock','life-transfer':'lifeTransfer'};
+    const resourceId=source.character.classKey==='occultist'?resourceIds[feature.id]:null;
+    const used=resourceId?Number(source.classes.occultist.resources[resourceId]||0):Number(source.classes.treasureHunter.featureUses?.[feature.id]||0);
+    const remaining=Math.max(0,Number(feature.uses||0)-used);
+    const use=feature.uses?`<div class="charge-row"><span>${remaining}/${feature.uses} uses · ${feature.recovery==='SR'?'Short Rest':feature.recovery==='HOUR'?'1 hour':'Long Rest'}</span><button type="button" class="small-btn" ${resourceId?`data-occult-resource="${resourceId}"`:`data-feature-use="${esc(feature.id)}" data-delta="${remaining?1:-1}"`} ${resourceId&&!remaining?'disabled':''}>${remaining?'Use':'Restore'}</button></div>`:'';
+    return `<article class="row-card feature-card ${open?'open':''} depth-${Math.min(depth,3)} ${feature.level>D.level(source)?'locked':''} ${choiceMissing?'choice-missing':''}" data-search-anchor="feature:${esc(feature.id)}" data-feature-family="${family?esc(feature.id):''}">
+      <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}" aria-expanded="${open}"><span><strong>${esc(ruleLabel(feature.name))}</strong><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature?`<span>${esc(ruleLabel(subclassFeature.name))}</span>`:''}${feature.kind==='origin'?'<span>Origin</span>':''}<span class="badge">${esc(action)}</span>${family&&members.length>1?`<span>${members.length-1} related rules</span>`:''}${choiceMissing?'<span class="feature-choice-alert">Choice needed</span>':''}</span></span><span aria-hidden="true">${open?'⌄':'›'}</span></button><button type="button" class="favorite ${favorite?'on':''}" data-feature-favorite="${esc(feature.id)}" aria-label="Favorite ${esc(ruleLabel(feature.name))}" aria-pressed="${favorite}">★</button></div>
+      ${feature.level<=D.level(source)?featureFactsHtml(feature,source,family):''}
+      <div class="row-detail">${rulesText(feature.fullText||feature.summary,source)}${source.character.classKey==='treasureHunter'?featureChoices(feature,source):''}${use}${children?`<div class="feature-related"><h3>Related rules and upgrades</h3>${children}</div>`:''}</div>
     </article>`;
   }
 
-  function featureMatches(feature, source) {
-    const query = local.featureSearch.trim().toLowerCase();
-    if (query && !`${feature.name} ${feature.summary} ${feature.fullText || ''}`.toLowerCase().includes(query)) return false;
-    const filter = source.ui.featureFilter;
-    if (filter === 'active') return feature.action !== 'Passive' || feature.uses;
-    if (filter === 'passive') return feature.action === 'Passive' && !feature.uses;
-    if (filter === 'subclass') return feature.kind === 'subclass';
-    return true;
-  }
-
-  function renderFeatureTree(features) {
-    const ids = new Set(features.map(feature => feature.id));
-    const children = new Map();
-    features.forEach(feature => {
-      const parentId = feature.parentId || FEATURE_PARENT[feature.id];
-      const parent = ids.has(parentId) ? parentId : '';
-      if (!children.has(parent)) children.set(parent, []);
-      children.get(parent).push(feature);
-    });
-    for (const values of children.values()) values.sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-    const render = (parent, depth) => (children.get(parent) || []).map(feature => `${featureCard(feature, depth)}${render(feature.id, depth + 1)}`).join('');
-    return render('', 0);
+  function renderFeatureTree(groups) {
+    return groups.map(group=>{
+      const children=group.members.filter(member=>member.id!==group.root.id);
+      const ids=new Set(children.map(member=>member.id)), byParent=new Map();
+      for(const child of children) {
+        const parent=FeatureLibrary.parentOf(child), key=ids.has(parent)?parent:group.root.id;
+        if(!byParent.has(key))byParent.set(key,[]);
+        byParent.get(key).push(child);
+      }
+      const render=(id,depth)=>(byParent.get(id)||[]).map(child=>featureCard(child,depth,render(child.id,depth+1))).join('');
+      return featureCard(group.root,0,render(group.root.id,1),group);
+    }).join('');
   }
 
   function renderFeatures() {
-    const source = state();
-    if (source.character.classKey !== 'treasureHunter') { $('#featuresPage').innerHTML = ''; return; }
-    const missing = [...Origin.originIncomplete(source), ...D.choiceRequirements(source)];
-    const progression = source.ui.featureView === 'progression';
-    let features = T.features.filter(feature => D.featureMatchesSubclass(feature, source) && (progression || feature.level <= D.level(source))).filter(feature => featureMatches(feature, source));
-    const favorite = new Set(source.ui.favoriteFeatures);
-    features = features.sort((a, b) => (favorite.has(b.id) ? 1 : 0) - (favorite.has(a.id) ? 1 : 0) || a.level - b.level || a.name.localeCompare(b.name));
-    const originFeatures = Origin.featureRecords(source).filter(feature => featureMatches(feature, source));
-    const filters = [['all', 'ALL'], ['active', 'ACTIVE'], ['passive', 'PASSIVE'], ['subclass', 'SUBCLASS']].map(([key, label]) => `<button type="button" class="filter-btn ${source.ui.featureFilter === key ? 'active' : ''}" data-feature-filter="${key}">${label}</button>`).join('');
-    $('#featuresPage').innerHTML = `${pageIntro('FEATURES', progression ? 'Complete level 1–20 progression' : `Available through level ${D.level(source)}`)}
-      ${missing.length ? `<div class="choice-warning"><b>Required choices missing</b><span>${esc(missing.join(' • '))}</span><small>Open the highlighted feature below, or use Builder for setup choices.</small><button type="button" class="small-btn" data-open-builder>Open Builder choices</button></div>` : ''}
-      ${section('Library', `<input id="featureSearch" class="search-inline" value="${esc(local.featureSearch)}" placeholder="Search features…"><div class="filters top-gap">${filters}</div><div class="view-switch top-gap"><button type="button" class="filter-btn ${!progression ? 'active' : ''}" data-feature-view="available">AVAILABLE</button><button type="button" class="filter-btn ${progression ? 'active' : ''}" data-feature-view="progression">PROGRESSION 1–20</button></div>`, '', 'feature-library')}
-      ${originFeatures.length ? section('Origin Features', `<div class="list origin-feature-list">${originFeatures.map(feature => featureCard(feature)).join('')}</div>`, '', 'origin-features-section') : ''}
-      ${section('Features', `<div class="list feature-tree">${features.length ? renderFeatureTree(features) : '<div class="empty">Nothing found.</div>'}</div>`, `<span class="eyebrow">LEVEL ${D.level(source)}</span>`, 'features-list-section')}`;
+    const source=state(), progression=source.ui.featureView==='progression';
+    const missing=[...Origin.originIncomplete(source),...D.choiceRequirements(source)];
+    const groups=FeatureLibrary.families(source,{progression,query:source.ui.featureSearch || '',filter:source.ui.featureFilter});
+    const narrow=!!String(source.ui.featureSearch || '').trim() || source.ui.featureFilter!=='all' || progression;
+    const pinned=groups.filter(group=>group.favorite), active=groups.filter(group=>group.active&&!group.favorite),passive=groups.filter(group=>!group.active&&!group.favorite);
+    const max=D.classDefinition(source)?.maxLevel || 20;
+    const filters=[['all','All rules'],['active','Active abilities'],['passive','Passive & setup'],['favorites','Starred'],...(source.character.classKey==='treasureHunter'?[['subclass','Subclass']]:[])].map(([key,label])=>`<option value="${key}" ${source.ui.featureFilter===key?'selected':''}>${label}</option>`).join('');
+    const body=narrow?renderFeatureTree(groups):`${pinned.length?section('Starred',`<div class="list feature-tree">${renderFeatureTree(pinned)}</div>`):''}${active.length?section('Active abilities',`<div class="list feature-tree">${renderFeatureTree(active)}</div>`,`<span class="eyebrow">${active.length} CARDS</span>`):''}${passive.length?`<details class="section feature-passive-section" ${source.ui.featurePassiveOpen?'open':''}><summary><strong>Passive & setup</strong><span>${passive.length} cards · expand to browse</span></summary><div class="list feature-tree">${renderFeatureTree(passive)}</div></details>`:''}`;
+    $('#featuresPage').innerHTML=`${pageIntro('FEATURES',progression?`Complete level 1–${max} progression`:'Your abilities, grouped with their upgrades')}
+      ${missing.length?`<div class="choice-warning feature-setup-notice"><b>${missing.length} setup choices need attention</b><button type="button" class="small-btn" data-open-builder>Open Builder</button></div>`:''}
+      <section class="section feature-library"><input id="featureSearch" class="search-inline" aria-label="Search features" value="${esc(source.ui.featureSearch || '')}" placeholder="Search English or original names…"><div class="feature-toolbar"><select id="featureFilter" aria-label="Filter features">${filters}</select><div class="view-switch"><button type="button" class="filter-btn ${!progression?'active':''}" data-feature-view="available">OVERVIEW</button><button type="button" class="filter-btn ${progression?'active':''}" data-feature-view="progression">LEVELS 1–${max}</button></div></div></section>
+      <div class="features-list-section">${body||'<div class="empty">No features match these filters.</div>'}</div>`;
   }
+  window.CharacterFeatureUI={render:renderFeatures};
 
   function renderRelics() {
     const source = state();
@@ -585,12 +589,12 @@
       const charges = max ? `<div class="charge-row"><span>${left}/${max} charges</span><div>${Array.from({ length: max }, (_, index) => `<button type="button" class="charge-dot ${index < left ? 'filled' : ''}" data-relic-use="${esc(entry.instanceId)}" data-delta="${index < left ? 1 : -1}" aria-label="${index < left ? 'Use' : 'Restore'} charge"></button>`).join('')}</div></div>` : '';
       const resistanceChoice = definition.choice === 'damageResistance' ? `<label>Chosen resistance<select data-relic-choice="${esc(entry.instanceId)}" data-choice-key="selectedDamageType"><option value="">Choose damage type…</option>${Rules.DAMAGE_TYPES.filter(([key]) => !['Bludgeoning', 'Piercing', 'Slashing', 'Force', 'Radiant'].includes(key)).map(([key, label]) => `<option value="${key}" ${entry.selectedDamageType === key ? 'selected' : ''}>${esc(label)}</option>`).join('')}</select></label>` : '';
       return `<article class="relic-card ${entry.prepared ? 'prepared' : ''} ${open ? 'open' : ''}" data-search-anchor="relic:${esc(entry.instanceId)}">
-        <div class="relic-top"><button type="button" class="relic-title" data-relic-toggle="${esc(entry.instanceId)}"><span><small>${entry.prepared ? 'PREPARED' : 'RESERVE'} • LEVEL ${definition.level}</small><b>${esc(definition.name)}</b></span><i>›</i></button><button type="button" class="small-btn ${entry.prepared ? 'primary' : ''}" data-relic-prepare="${esc(entry.instanceId)}">${entry.prepared ? 'Prepared' : 'Prepare'}</button></div>
-        ${charges}<div class="relic-detail">${nl(definition.fullText || definition.summary)}${resistanceChoice}<div class="detail-actions"><button type="button" class="small-btn danger" data-relic-remove="${esc(entry.instanceId)}">Remove from collection</button></div></div>
+        <div class="relic-top"><button type="button" class="relic-title" data-relic-toggle="${esc(entry.instanceId)}"><span><small>${entry.prepared ? 'PREPARED' : 'RESERVE'} • LEVEL ${definition.level}</small><b>${esc(ruleLabel(definition.name))}</b></span><i>›</i></button><button type="button" class="small-btn ${entry.prepared ? 'primary' : ''}" data-relic-prepare="${esc(entry.instanceId)}">${entry.prepared ? 'Prepared' : 'Prepare'}</button></div>
+        ${charges}<div class="relic-detail">${featureFactsHtml(definition,source)}${rulesText(definition.fullText || definition.summary,source)}${resistanceChoice}<div class="detail-actions"><button type="button" class="small-btn danger" data-relic-remove="${esc(entry.instanceId)}">Remove from collection</button></div></div>
       </article>`;
     }).join('') || '<div class="empty">No relics in the collection.</div>';
     const available = Relics.filter(relic => relic.level <= level && !entries.some(item => item.definition.id === relic.id)).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
-    const options = available.map(relic => `<option value="${esc(relic.id)}">${esc(relic.name)} • level ${relic.level}</option>`).join('');
+    const options = available.map(relic => `<option value="${esc(relic.id)}">${esc(ruleLabel(relic.name))} • level ${relic.level}</option>`).join('');
     $('#relicsPage').innerHTML = `${pageIntro('RELICS', subclass ? `${subclass} collection and shared charges` : 'Subclass collection unlocks at level 3')}
       ${section('Capacity', `<div class="stat-grid">${stat('PREP', `${prepared}/${limits[0]}`, 'compact')}${stat('RESERVE', `${reserve}/${limits[1]}`, 'compact')}${stat('TOTAL', `${entries.length}/${limits[2]}`, 'compact')}${stat('RELIC DC', D.relicDC(source), 'compact')}</div>`, '', 'relic-capacity-section')}
       ${section('Collection', `<div class="inline-form"><select id="relicSelect" ${entries.length >= limits[2] ? 'disabled' : ''}><option value="">Add relic…</option>${options}</select><button type="button" class="small-btn" data-relic-add ${entries.length >= limits[2] ? 'disabled' : ''}>+</button></div><div class="relic-grid top-gap">${cards}</div>`, '', 'relic-collection-section')}
@@ -1095,10 +1099,10 @@
     const species = Origin.species(source);
     const speciesChoices = species?.id === 'city_goblin_lukys_campaign' ? `<div id="builderSpeciesChoices" class="builder-choice-fields"><label>City Goblin skill 1<select id="builderSpeciesSkill0" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, origin.speciesChoices?.skills?.[0] || '')).join('')}</select></label><label>City Goblin skill 2<select id="builderSpeciesSkill1" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, origin.speciesChoices?.skills?.[1] || '')).join('')}</select></label><label>City Goblin Simple Weapon<select id="builderSpeciesWeapon"><option value="">Choose…</option>${Origin.SIMPLE_WEAPONS.map(weapon => builderOption(weapon, origin.speciesChoices?.simpleWeapon || '')).join('')}</select></label></div>` : '<div id="builderSpeciesChoices"></div>';
     $('#builderBody').innerHTML = `<div class="builder-status ${missing.length ? 'warning' : 'complete'}">${missing.length ? `Missing: ${esc(missing.join(' • '))}` : 'Required choices complete ✓'}</div>
-      <section class="builder-block"><h3>Identity</h3><div class="form-grid two"><label>Name<input id="builderName" value="${esc(c.name)}"></label><label>Level<select id="builderLevel">${Array.from({ length: 20 }, (_, index) => builderOption(String(index + 1), String(D.level(source)), `Level ${index + 1}`)).join('')}</select></label><label>Species<select id="builderSpecies"><option value="">Choose species…</option>${Origin.SPECIES.map(item => builderOption(item.name, origin.species || c.race)).join('')}</select></label><label>Background<select disabled><option>${esc(Origin.BACKGROUND.name)}</option></select></label></div>${species && !species.mechanicsAvailable ? '<div class="origin-note warning">No complete mechanical source was supplied for this species. No mechanics will be invented.</div>' : ''}</section>
+      <section class="builder-block"><h3>Identity</h3><div class="form-grid two"><label>Name<input id="builderName" value="${esc(c.name)}"></label><label>Level<select id="builderLevel">${Array.from({ length: 20 }, (_, index) => builderOption(String(index + 1), String(D.level(source)), `Level ${index + 1}`)).join('')}</select></label><label>Species<select id="builderSpecies"><option value="">Choose species…</option>${Origin.SPECIES.map(item => builderOption(item.name, origin.species || c.race)).join('')}</select></label><label>Background<select disabled><option>${esc(ruleLabel(Origin.BACKGROUND.name))}</option></select></label></div>${species && !species.mechanicsAvailable ? '<div class="origin-note warning">No complete mechanical source was supplied for this species. No mechanics will be invented.</div>' : ''}</section>
       <section class="builder-block"><h3>Final Ability Scores</h3><small class="muted">Enter final values after origin bonuses. The canonical base values are derived when saving.</small><div class="builder-abilities">${S.A.map(ability => `<label>${ability}<input type="number" min="1" max="30" value="${D.ability(ability, source)}" data-builder-ability="${ability}"></label>`).join('')}</div><label class="check-label"><input id="builderHpAuto" type="checkbox" ${c.hp.auto !== false ? 'checked' : ''}> Automatic Max HP</label><label>Manual Max HP<input id="builderHpMax" type="number" min="1" value="${D.hpMax(source)}" ${c.hp.auto !== false ? 'disabled' : ''}></label></section>
-      <section class="builder-block"><h3>${esc(Origin.BACKGROUND.name)}</h3><div class="builder-choice-fields"><label>Ability boosts<select id="builderAbilityMode"><option value="+2/+1" ${background.abilityMode !== '+1/+1/+1' ? 'selected' : ''}>+2 / +1</option><option value="+1/+1/+1" ${background.abilityMode === '+1/+1/+1' ? 'selected' : ''}>+1 / +1 / +1</option></select></label><label>Origin feat<select id="builderFeat"><option value="">Choose…</option>${Object.keys(Origin.BACKGROUND.feats).map(feat => builderOption(feat, background.feat || '')).join('')}</select></label></div><div id="builderAbilityChoices" class="builder-choice-fields">${builderAbilityChoices(background)}</div><div id="builderFeatInfo" class="origin-note ${background.feat ? '' : 'warning'}">${background.feat ? `<b>${esc(background.feat)}</b><span>${esc(Origin.BACKGROUND.feats[background.feat]?.description || '')}</span>` : 'Choose the background feat.'}</div></section>
-      <section class="builder-block proficiency-builder"><h3>Proficiencies & Masteries</h3><p class="muted">All proficiency, expertise and mastery choices live here. Features and the Skills page show these values with their grant source.</p><h4>Species</h4>${speciesChoices}<h4>Background</h4><div class="builder-choice-fields"><label>Skill 1<select id="builderBgSkill0" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, background.skills?.[0] || '')).join('')}</select></label><label>Skill 2<select id="builderBgSkill1" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, background.skills?.[1] || '')).join('')}</select></label><label>Tool / Kit / Supplies<select id="builderBgTool" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.TOOLS, background.tool || '')}</select></label><label>Instrument / Game / Vehicle<select id="builderBgSecondary" data-prof-choice><option value="">Choose…</option>${builderSecondaryOptions(background.secondary || '')}</select></label></div><div id="builderFeatExtra" class="builder-choice-fields">${builderFeatExtra(background)}</div><h4>Treasure Hunter</h4><p class="muted">Choose exactly 3 class skills. Choices already granted by Species or Background are disabled.</p><div class="class-skill-picker">${T.classSkills.map(skill => `<label><input type="checkbox" data-builder-class-skill="${esc(skill)}" ${selectedClassSkills.has(skill) ? 'checked' : ''}><span>${esc(skill)}</span></label>`).join('')}</div><div class="builder-choice-fields"><label>Starodávný jazyk 1<select id="builderLanguage0" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[0] || '')).join('')}</select></label><label>Starodávný jazyk 2<select id="builderLanguage1" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[1] || '')).join('')}</select></label><label>Starodávný jazyk 3<select id="builderLanguage2" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[2] || '')).join('')}</select></label><label>Vehicle 1<select id="builderVehicle0" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.VEHICLES, choices.vehicles?.[0] || '')}</select></label><label>Vehicle 2<select id="builderVehicle1" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.VEHICLES, choices.vehicles?.[1] || '')}</select></label><label>Expertise<select id="builderExpertise"><option value="">Choose proficient skill…</option>${Object.keys(D.SKILLS).map(skill => builderOption(skill, choices.expertise || '')).join('')}</select></label><label>Weapon Mastery 1<select id="builderMastery0" data-builder-unique="masteries"><option value="">Choose…</option>${builderWeaponOptions(BUILDER_WEAPONS.filter(name => name !== 'Whip'), choices.weaponMasteries?.[0] || '')}</select><small>Whip · Slow is already granted by Mistr biče.</small></label><label>Weapon Mastery 2<select id="builderMastery1" data-builder-unique="masteries"><option value="">Choose…</option>${builderWeaponOptions(BUILDER_WEAPONS.filter(name => name !== 'Whip'), choices.weaponMasteries?.[1] || '')}</select></label></div><details class="manual-proficiencies"><summary>Manual skill overrides</summary><p class="muted">Use only for a grant that is not represented by Species, Background or a feature.</p><div class="manual-skill-grid">${Object.keys(D.SKILLS).map(skill => `<label>${esc(skill)}<select data-builder-manual-skill="${esc(skill)}"><option value="0" ${Number(c.skills?.[skill] || 0) === 0 ? 'selected' : ''}>None</option><option value="1" ${Number(c.skills?.[skill]) === 1 ? 'selected' : ''}>Proficient</option><option value="2" ${Number(c.skills?.[skill]) === 2 ? 'selected' : ''}>Expertise</option></select></label>`).join('')}</div></details></section>
+      <section class="builder-block"><h3>${esc(ruleLabel(Origin.BACKGROUND.name))}</h3><div class="builder-choice-fields"><label>Ability boosts<select id="builderAbilityMode"><option value="+2/+1" ${background.abilityMode !== '+1/+1/+1' ? 'selected' : ''}>+2 / +1</option><option value="+1/+1/+1" ${background.abilityMode === '+1/+1/+1' ? 'selected' : ''}>+1 / +1 / +1</option></select></label><label>Origin feat<select id="builderFeat"><option value="">Choose…</option>${Object.keys(Origin.BACKGROUND.feats).map(feat => builderOption(feat, background.feat || '')).join('')}</select></label></div><div id="builderAbilityChoices" class="builder-choice-fields">${builderAbilityChoices(background)}</div><div id="builderFeatInfo" class="origin-note ${background.feat ? '' : 'warning'}">${background.feat ? `<b>${esc(background.feat)}</b><span>${esc(Origin.BACKGROUND.feats[background.feat]?.description || '')}</span>` : 'Choose the background feat.'}</div></section>
+      <section class="builder-block proficiency-builder"><h3>Proficiencies & Masteries</h3><p class="muted">All proficiency, expertise and mastery choices live here. Features and the Skills page show these values with their grant source.</p><h4>Species</h4>${speciesChoices}<h4>Background</h4><div class="builder-choice-fields"><label>Skill 1<select id="builderBgSkill0" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, background.skills?.[0] || '')).join('')}</select></label><label>Skill 2<select id="builderBgSkill1" data-prof-choice><option value="">Choose…</option>${Origin.SKILLS.map(skill => builderOption(skill, background.skills?.[1] || '')).join('')}</select></label><label>Tool / Kit / Supplies<select id="builderBgTool" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.TOOLS, background.tool || '')}</select></label><label>Instrument / Game / Vehicle<select id="builderBgSecondary" data-prof-choice><option value="">Choose…</option>${builderSecondaryOptions(background.secondary || '')}</select></label></div><div id="builderFeatExtra" class="builder-choice-fields">${builderFeatExtra(background)}</div><h4>Treasure Hunter</h4><p class="muted">Choose exactly 3 class skills. Choices already granted by Species or Background are disabled.</p><div class="class-skill-picker">${T.classSkills.map(skill => `<label><input type="checkbox" data-builder-class-skill="${esc(skill)}" ${selectedClassSkills.has(skill) ? 'checked' : ''}><span>${esc(skill)}</span></label>`).join('')}</div><div class="builder-choice-fields"><label>Ancient Language 1<select id="builderLanguage0" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[0] || '')).join('')}</select></label><label>Ancient Language 2<select id="builderLanguage1" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[1] || '')).join('')}</select></label><label>Ancient Language 3<select id="builderLanguage2" data-builder-unique="languages"><option value="">Choose…</option>${T.ancientLanguages.map(value => builderOption(value, choices.ancientLanguages?.[2] || '')).join('')}</select></label><label>Vehicle 1<select id="builderVehicle0" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.VEHICLES, choices.vehicles?.[0] || '')}</select></label><label>Vehicle 2<select id="builderVehicle1" data-prof-choice><option value="">Choose…</option>${builderOptions(Origin.VEHICLES, choices.vehicles?.[1] || '')}</select></label><label>Expertise<select id="builderExpertise"><option value="">Choose proficient skill…</option>${Object.keys(D.SKILLS).map(skill => builderOption(skill, choices.expertise || '')).join('')}</select></label><label>Weapon Mastery 1<select id="builderMastery0" data-builder-unique="masteries"><option value="">Choose…</option>${builderWeaponOptions(BUILDER_WEAPONS.filter(name => name !== 'Whip'), choices.weaponMasteries?.[0] || '')}</select><small>Whip · Slow is already granted by Whip Master.</small></label><label>Weapon Mastery 2<select id="builderMastery1" data-builder-unique="masteries"><option value="">Choose…</option>${builderWeaponOptions(BUILDER_WEAPONS.filter(name => name !== 'Whip'), choices.weaponMasteries?.[1] || '')}</select></label></div><details class="manual-proficiencies"><summary>Manual skill overrides</summary><p class="muted">Use only for a grant that is not represented by Species, Background or a feature.</p><div class="manual-skill-grid">${Object.keys(D.SKILLS).map(skill => `<label>${esc(skill)}<select data-builder-manual-skill="${esc(skill)}"><option value="0" ${Number(c.skills?.[skill] || 0) === 0 ? 'selected' : ''}>None</option><option value="1" ${Number(c.skills?.[skill]) === 1 ? 'selected' : ''}>Proficient</option><option value="2" ${Number(c.skills?.[skill]) === 2 ? 'selected' : ''}>Expertise</option></select></label>`).join('')}</div></details></section>
       ${starting.legacy ? '' : starting.finalized ? `<section class="builder-block starting-gear-block complete"><h3>Starting Gear</h3><div class="starting-gear-summary"><b>Purchases complete</b><span>${gpLabel(starting.spentCp)} spent · ${gpLabel(starting.remainderCp)} moved to your wallet</span></div></section>` : `<section class="builder-block starting-gear-block"><h3>Starting Gold & Gear</h3><p class="muted">Enter the campaign budget set by your DM, then buy from the curated catalogue. There is no forced class package.</p><div class="starting-budget-row"><label>Starting budget (GP)<input id="builderStartingGold" type="number" min="0" step="1" inputmode="numeric" value="${starting.budgetGp}"></label><button type="button" class="small-btn" data-starting-budget-save>Set budget</button></div><div class="starting-gear-summary"><b>${gpLabel(starting.remainingCp)} remaining</b><span>${gpLabel(starting.spentCp)} of ${gpLabel(starting.budgetCp)} spent</span></div>${startingPurchaseList()}<div class="detail-actions"><button type="button" class="small-btn primary" data-starting-shop>Open Starting Gear Shop</button><button type="button" class="small-btn" data-starting-finalize ${starting.budgetCp ? '' : 'disabled'}>Finish & move remainder to wallet</button></div></section>`}`;
   }
 
@@ -1117,7 +1121,7 @@
     const preview = S.normalize(S.clone(source), { skipAbilityMigration: true });
     preview.character.level = target;
     const features = T.features.filter(feature => feature.level === target && D.featureMatchesSubclass(feature, preview));
-    const featureRows = features.map(feature => `<div class="level-up-feature"><span><b>${esc(feature.name)}</b><small>${feature.kind === 'subclass' ? esc(D.subclassName(preview) || 'Subclass') : 'Treasure Hunter'}</small></span><em>${esc(actionCode(feature.action))}</em></div>`).join('');
+    const featureRows = features.map(feature => `<div class="level-up-feature"><span><b>${esc(ruleLabel(feature.name))}</b><small>${feature.kind === 'subclass' ? esc(D.subclassName(preview) || 'Subclass') : 'Treasure Hunter'}</small></span><em>${esc(actionCode(feature.action))}</em></div>`).join('');
     const required = Object.entries(T.choiceDefinitions || {}).flatMap(([featureId, definitions]) => {
       const feature = T.features.find(item => item.id === featureId);
       return feature?.level === target ? definitions.map(definition => `${feature.name}: ${definition.label}`) : [];
@@ -1145,7 +1149,7 @@
   function levelUpChoiceField(feature, definition, source) {
     const raw = local.levelUpSelections[definition.key] ?? source.classes.treasureHunter.choices[definition.key];
     const values = Array.isArray(raw) ? raw : [raw || ''];
-    return `<div class="level-up-choice"><b>${esc(feature.name)}</b><small>${esc(definition.label)}</small>${Array.from({ length: definition.count }, (_, index) => { const selected = values[index] || ''; return ['select', 'skill', 'weapon'].includes(definition.type) ? `<select data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}"><option value="">Choose…</option>${choiceOptions(definition, selected, source, values, index)}</select>` : `<input data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}" value="${esc(selected)}" placeholder="${esc(definition.placeholder || '')}">`; }).join('')}</div>`;
+    return `<div class="level-up-choice"><b>${esc(ruleLabel(feature.name))}</b><small>${esc(ruleLabel(definition.label))}</small>${Array.from({ length: definition.count }, (_, index) => { const selected = values[index] || ''; return ['select', 'skill', 'weapon'].includes(definition.type) ? `<select data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}"><option value="">Choose…</option>${choiceOptions(definition, selected, source, values, index)}</select>` : `<input data-level-up-choice="${esc(definition.key)}" data-choice-index="${index}" value="${esc(selected)}" placeholder="${esc(definition.placeholder || '')}">`; }).join('')}</div>`;
   }
   function renderLevelUpWizard() {
     const source = state(), current = D.level(source), target = Math.min(20, current + 1), preview = levelUpPreview();
@@ -1159,7 +1163,7 @@
       body = `<div class="level-up-screen"><small>LEVEL ${current} → ${target}</small><h2>What changes</h2><div class="level-up-stats">${changes.map(([label, before, after]) => `<div><span>${label}</span><small>${before}</small><i>→</i><b>${after}</b></div>`).join('')}</div><p>${features.length} new features${definitions.length ? ` · ${definitions.length} required choices` : ''}</p></div>`;
     } else if (step <= features.length) {
       const feature = features[step - 1];
-      body = `<div class="level-up-screen feature"><small>NEW FEATURE · ${step}/${features.length}</small><h2>${esc(feature.name)}</h2><div class="level-up-feature-meta"><span>Level ${target}</span><span>${esc(actionCode(feature.action))}</span></div><div class="level-up-rules">${rulesText(feature.fullText || feature.summary || 'No additional rules text.', preview)}</div>${feature.cost ? `<div class="feature-cool-cost">${feature.cost} COOL</div>` : ''}</div>`;
+      body = `<div class="level-up-screen feature"><small>NEW FEATURE · ${step}/${features.length}</small><h2>${esc(ruleLabel(feature.name))}</h2><div class="level-up-feature-meta"><span>Level ${target}</span><span>${esc(actionCode(feature.action))}</span></div><div class="level-up-rules">${rulesText(feature.fullText || feature.summary || 'No additional rules text.', preview)}</div>${feature.cost ? `<div class="feature-cool-cost">${feature.cost} COOL</div>` : ''}</div>`;
     } else body = `<div class="level-up-screen choices"><small>FINAL STEP</small><h2>${definitions.length ? 'Make your choices' : 'Ready to level up'}</h2>${definitions.length ? definitions.map(({ feature, definition }) => levelUpChoiceField(feature, definition, preview)).join('') : '<p>No new choices are required at this level.</p>'}<p class="muted">Level and choices save together and can be undone as one change.</p></div>`;
     const finalStep = step === totalSteps - 1;
     $('#levelUpWizard').innerHTML = `<div class="level-up-progress"><span>${step + 1}/${totalSteps}</span><i style="--progress:${Math.round((step + 1) / totalSteps * 100)}%"></i></div>${body}<menu class="level-up-nav"><button type="button" class="ghost" data-level-up-back ${step ? '' : 'disabled'}>Back</button>${finalStep ? `<button type="button" class="primary" data-level-up-finish="${target}">Apply level ${target}</button>` : '<button type="button" class="primary" data-level-up-next>Next</button>'}</menu>`;
@@ -1237,7 +1241,7 @@
       title = `${key} ${S.signed(D.skillMod(key, source))}`; rollKind = 'skill';
       const grants = D.skillProficiencySources(key, source);
       const situational = D.situationalRollHints('skill', key, source);
-      body = `<div class="formula-list"><div class="formula-row"><span>Ability (${D.SKILLS[key]})</span><b>${S.signed(D.mod(D.SKILLS[key], source))}</b></div><div class="formula-row"><span>Training</span><b>${D.skillStatus(key, source) === 2 ? 'Expertise' : D.skillStatus(key, source) === 1 ? 'Proficient' : 'None'}</b></div></div>${situational.length ? `<div class="situational-list">${situational.map(hint => `<div><b>${situationalIndicator([hint])} Situational ${hint.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}</b><span>${esc(hint.condition)}</span><small>${esc(hint.source)}</small></div>`).join('')}</div>` : ''}<div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(entry.source)}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
+      body = `<div class="formula-list"><div class="formula-row"><span>Ability (${D.SKILLS[key]})</span><b>${S.signed(D.mod(D.SKILLS[key], source))}</b></div><div class="formula-row"><span>Training</span><b>${D.skillStatus(key, source) === 2 ? 'Expertise' : D.skillStatus(key, source) === 1 ? 'Proficient' : 'None'}</b></div></div>${situational.length ? `<div class="situational-list">${situational.map(hint => `<div><b>${situationalIndicator([hint])} Situational ${hint.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}</b><span>${esc(hint.condition)}</span><small>${esc(ruleLabel(hint.source))}</small></div>`).join('')}</div>` : ''}<div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(ruleLabel(entry.source))}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
     }
     if (rollKind) {
       const effective = D.effectiveRollMode(rollKind, rollKey, source);
@@ -1393,7 +1397,7 @@
     const checked = (list, value) => (list || []).includes(value) ? 'checked' : '';
     const npcs = [...source.campaign.npcs].sort((a, b) => a.name.localeCompare(b.name)).map(npc => `<label><input type="checkbox" data-journal-link="npc" value="${esc(npc.id)}" ${checked(entry.npcIds, npc.id)}><span>${esc(npc.name)}</span></label>`).join('') || '<span class="muted">No NPCs available.</span>';
     const items = D.inventory(source).sort((a, b) => a.name.localeCompare(b.name)).map(item => `<label><input type="checkbox" data-journal-link="item" value="${esc(item.id)}" ${checked(entry.itemIds, item.id)}><span>${esc(item.name)}</span></label>`).join('') || '<span class="muted">No items available.</span>';
-    const relics = source.classes.treasureHunter.relics.map(owned => ({ owned, definition: Relics.find(relic => relic.id === owned.relicId) })).filter(record => record.definition).sort((a, b) => a.definition.name.localeCompare(b.definition.name)).map(record => `<label><input type="checkbox" data-journal-link="relic" value="${esc(record.owned.instanceId)}" ${checked(entry.relicIds, record.owned.instanceId)}><span>${esc(record.definition.name)}</span></label>`).join('') || '<span class="muted">No relics available.</span>';
+    const relics = source.classes.treasureHunter.relics.map(owned => ({ owned, definition: Relics.find(relic => relic.id === owned.relicId) })).filter(record => record.definition).sort((a, b) => a.definition.name.localeCompare(b.definition.name)).map(record => `<label><input type="checkbox" data-journal-link="relic" value="${esc(record.owned.instanceId)}" ${checked(entry.relicIds, record.owned.instanceId)}><span>${esc(ruleLabel(record.definition.name))}</span></label>`).join('') || '<span class="muted">No relics available.</span>';
     $('#journalLinkFields').innerHTML = `<div class="journal-link-group"><b>NPCs</b>${npcs}</div><div class="journal-link-group"><b>Items</b>${items}</div><div class="journal-link-group"><b>Relics</b>${relics}</div>`;
     $('#journalDeleteBtn').hidden = !entry.id;
     showDialog('#journalDialog');
@@ -1630,9 +1634,9 @@
     if (!query) { local.searchResults = []; $('#globalSearchResults').innerHTML = ''; return; }
     const source = state();
     const results = [];
-    T.features.filter(feature => feature.level <= D.level(source) && D.featureMatchesSubclass(feature, source)).forEach(feature => { if (`${feature.name} ${feature.summary} ${feature.fullText || ''}`.toLowerCase().includes(query)) results.push({ kind: 'feature', type: 'FEATURE', id: feature.id, title: feature.name, page: 'featuresPage' }); });
-    allActionRecords().forEach(action => { if (`${action.name} ${action.summary || ''} ${action.source || ''}`.toLowerCase().includes(query)) results.push({ kind: 'action', type: 'ACTION', id: action.id, title: action.name, page: 'actionsPage' }); });
-    if (D.subclassHasSystem('relics', source)) source.classes.treasureHunter.relics.forEach(owned => { const relic = Relics.find(item => item.id === owned.relicId); if (relic && `${relic.name} ${relic.summary} ${relic.fullText || ''}`.toLowerCase().includes(query)) results.push({ kind: 'relic', type: 'RELIC', id: owned.instanceId, title: relic.name, page: 'relicsPage' }); });
+    FeatureLibrary.records(source).filter(feature=>feature.level<=D.level(source)).forEach(feature => { if (`${feature.name} ${feature.summary} ${feature.fullText || ''} ${ruleLabel(feature.name)} ${ruleLabel(feature.fullText || feature.summary)}`.toLowerCase().includes(query)) results.push({ kind: 'feature', type: 'FEATURE', id: feature.id, title: ruleLabel(feature.name), page: 'featuresPage' }); });
+    allActionRecords().forEach(action => { if (`${action.name} ${action.summary || ''} ${action.source || ''} ${ruleLabel(action.name)} ${ruleLabel(action.summary)}`.toLowerCase().includes(query)) results.push({ kind: 'action', type: 'ACTION', id: action.id, title: ruleLabel(action.name), page: 'actionsPage' }); });
+    if (D.subclassHasSystem('relics', source)) source.classes.treasureHunter.relics.forEach(owned => { const relic = Relics.find(item => item.id === owned.relicId); if (relic && `${relic.name} ${relic.summary} ${relic.fullText || ''} ${ruleLabel(relic.name)} ${ruleLabel(relic.fullText)}`.toLowerCase().includes(query)) results.push({ kind: 'relic', type: 'RELIC', id: owned.instanceId, title: ruleLabel(relic.name), page: 'relicsPage' }); });
     allGearItems(source).forEach(({ item }) => { if (`${item.name} ${item.description || ''} ${item.notes || ''}`.toLowerCase().includes(query)) results.push({ kind: 'item', type: 'ITEM', id: item.id, title: item.name, page: 'gearPage' }); });
     source.campaign.npcs.forEach(npc => { if (`${npc.name} ${npc.profession || ''} ${npc.nationality || ''} ${npc.location || ''} ${npc.notes || ''}`.toLowerCase().includes(query)) results.push({ kind: 'npc', type: 'NPC', id: npc.id, title: npc.name, page: 'npcsPage' }); });
     source.campaign.journal.forEach(entry => { if (`${entry.title} ${entry.type} ${entry.location} ${entry.body}`.toLowerCase().includes(query)) results.push({ kind: 'journal', type: 'JOURNAL', id: entry.id, title: entry.title, page: 'npcsPage' }); });
@@ -1646,7 +1650,8 @@
     if (result.kind === 'feature') {
       if (state().ui.featureView !== 'available') C.setUi('featureView', 'available');
       if (state().ui.featureFilter !== 'all') C.setUi('featureFilter', 'all');
-      local.featureSearch = '';
+      C.setUi('featureSearch','');
+      if(FeatureLibrary.families(state()).some(group=>!group.active&&group.members.some(member=>member.id===result.id))) C.setUi('featurePassiveOpen',true);
       if (!state().ui.openFeatures.includes(result.id)) C.toggleOpen('feature', result.id);
     } else if (result.kind === 'action') {
       if (state().ui.actionFilter !== 'all') C.setUi('actionFilter', 'all');
@@ -1728,7 +1733,7 @@
       return false;
     }
     const spent = [result.cost ? `${result.cost} Cool` : '', result.ammunition ? `1 ${result.ammunition.type || 'bullet'}` : '', result.featureUse ? '1 use' : '', result.relicUse ? '1 charge' : ''].filter(Boolean).join(' · ');
-    toastUndo(`${record.name} used${spent ? ` · ${spent}` : ''}.`);
+    toastUndo(`${ruleLabel(record.name)} used${spent ? ` · ${spent}` : ''}.`);
     return true;
   }
 
@@ -1834,7 +1839,12 @@
     if (button.dataset.skillEdit) { openStatDetail(`skill:${button.dataset.skillEdit}`); return; }
     if (button.dataset.featureFilter) { C.setUi('featureFilter', button.dataset.featureFilter); return; }
     if (button.dataset.featureView) { C.setUi('featureView', button.dataset.featureView); return; }
-    if (button.dataset.featureToggle) { C.toggleOpen('feature', button.dataset.featureToggle); return; }
+    if (button.dataset.featureToggle) {
+      const id=button.dataset.featureToggle,source=state();
+      if(FeatureLibrary.isOpen(id,source)) {const related=new Set(FeatureLibrary.descendants(id,source));C.setUi('openFeatures',source.ui.openFeatures.filter(key=>!related.has(key)));}
+      else C.toggleOpen('feature',id);
+      return;
+    }
     if (button.dataset.featureFavorite) { C.toggleFavorite('feature', button.dataset.featureFavorite); return; }
 
     if (button.hasAttribute('data-relic-add')) { const result = C.addRelic($('#relicSelect').value); if (!result.ok) toast(result.reason === 'capacity' ? 'Relic collection is full.' : result.reason === 'subclass' ? 'Choose Occult Collector on Features first.' : 'Relic cannot be added.', 'warn'); return; }
@@ -2035,6 +2045,7 @@
 
   function onChange(event) {
     const target = event.target;
+    if (target.id==='featureFilter') { C.setUi('featureFilter',target.value); return; }
     if (target.dataset.tacticsField) {
       C.setUi('tactics', { ...(state().ui.tactics || {}), [target.dataset.tacticsField]: target.value });
       renderTacticsDialog();
@@ -2120,9 +2131,8 @@
   function onInput(event) {
     const target = event.target;
     if (target.id === 'featureSearch') {
-      local.featureSearch = target.value;
       const position = target.selectionStart;
-      renderFeatures();
+      C.setUi('featureSearch',target.value);
       const next = $('#featureSearch'); next.focus(); next.setSelectionRange(position, position);
       return;
     }
@@ -2252,6 +2262,11 @@
     }, { passive: true });
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
+    document.addEventListener('toggle',event=>{
+      const target=event.target;
+      if(!target.isConnected || !target.matches('details.feature-passive-section'))return;
+      if(!!state().ui.featurePassiveOpen!==target.open)C.setUi('featurePassiveOpen',target.open);
+    },true);
     document.addEventListener('input', onInput);
     document.addEventListener('submit', onSubmit);
     document.addEventListener('keydown', event => {

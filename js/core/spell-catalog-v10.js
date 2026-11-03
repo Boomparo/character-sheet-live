@@ -48,7 +48,7 @@
     const byName = new Map();
     for (const spell of spells) byName.set(String(spell.name || '').toLowerCase(), spell);
     for (const source of Occultist?.spells || []) {
-      const spell = normalizeOccultist(source), key = spell.name.toLowerCase(), existing = byName.get(key);
+      const spell = normalizeOccultist(window.CharacterEnglishRules?.spell(source) || source), key = spell.name.toLowerCase(), existing = byName.get(key);
       byName.set(key, existing ? { ...existing, ...spell, desc: spell.desc || existing.desc, upcast: spell.upcast || existing.upcast, source: spell.source || existing.source } : spell);
     }
     for (const spell of Homebrew?.spells?.() || []) byName.set(String(spell.name || '').toLowerCase(), clone(spell));

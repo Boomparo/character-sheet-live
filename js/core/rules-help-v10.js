@@ -21,7 +21,7 @@
     [/zranění(?![\p{L}])/giu, 'damage']
   ];
   function text(value) {
-    let result = String(value ?? '');
+    let result = window.CharacterEnglishRules?.text(value) ?? String(value ?? '');
     for (const [pattern, replacement] of terms) result = result.replace(new RegExp(`(?<![\\p{L}])${pattern.source}`, pattern.flags), replacement);
     return result;
   }

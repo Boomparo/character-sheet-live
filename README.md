@@ -54,3 +54,13 @@ CHROMIUM_PATH=/path/to/chromium LILI_JSON_PATH=/path/to/Lili_169.json node tests
 ```
 
 `tests/fixtures/Lili_169.json` preserves the supplied legacy data with portrait artwork omitted. The full original attachment was also verified with `LILI_JSON_PATH`. Death Save and weapon property behavior follows the 2024 [Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game) and [Equipment](https://www.dndbeyond.com/sources/dnd/br-2024/equipment) rules.
+
+## V10.2.0: English rules and compact feature families
+
+- The built-in Treasure Hunter, Occultist, relic and science descriptions have complete English presentations. Stored source records, IDs, preparation, character names, custom content and notes retain their original values.
+- Features defaults to grouped ability cards. Related rules and upgrades are nested inside the parent, passive/setup rules are collapsed, and starred families appear first. Overview, progression, active/passive filters and searches in English or original names share the same model for both classes.
+- Current-character facts show relevant DCs, attack bonuses, damage/healing dice, Temporary HP, movement distances, preparation limits and remaining resources. Formulas annotate current level and ability modifiers. Unknown DM-set DCs are explicitly labelled.
+- Search, favorites and filters remain character-specific. Full rules stay available in the card detail. English names also appear in Actions, Spells, Sciences, Relics, Builder and proficiency sources.
+- All new presentation modules are precached for offline use. The version update preserves the existing character storage keys and schema.
+
+Validation: `node --test tests/*.test.js`; `node tests/browser-v10.cjs`; `node tests/features-browser-v10.cjs` (the browser scripts require Playwright and optionally `CHROMIUM_PATH`). Feature browser checks cover desktop/mobile grouping, nested disclosure, original-name search, starred rules, complete English feature/science/spell/relic displays and current numbers. The main browser suite also verifies the V10.1.5 cache upgrade, import, character isolation and offline operation.
