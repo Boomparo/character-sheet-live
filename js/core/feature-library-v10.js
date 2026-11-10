@@ -66,9 +66,10 @@
       'whip-master':[value('Weapon die','1d6'),value('Reach','15 ft.'),dc('Whip save',D.whipRopeDC(source))],
       'indy-maneuvers':[value('Slide',`${slide} ft.`),value('Cost','Bonus Action'),...(level>=2?[value('Precision bonus',die(1,source)),value('Line targets',Math.max(2,dex))]:[])],
       'indy-slide':[value('Movement',`${slide} ft.`),value('Frequency','1/round'),...(level>=7?[value('Normal stand',`${Math.min(10,Math.floor(speed/2))} ft.`)]:[])],
+      'intelligent-use':[value('Item attack',signed(int+pb+D.d20Penalty(source))),dc('Item save',8+int+pb)],
       'narrow-escape':[value('Temporary HP',`${die(level>=15?2:1,source)}${signed(level+pb)}`),value('Movement',`${level>=15?Math.floor(speed/2):5} ft.`)],
       'precision-slide':[value('Extra damage',die(1,source)),value('Attack','Advantage')],
-      'line-attack':[value('Targets',Math.max(2,dex)),value('First hit','Normal weapon damage'),value('Later hits',level>=11?`Weapon die or ${die(1,source)}`:'1 weapon die')],
+      'line-attack':[value('Targets',Math.max(2,dex))],
       'adventurers-rope':[value('Reach','15 ft.'),dc('Rope save',D.whipRopeDC(source)),value('Pull','10 ft.'),value('Tether','20 ft.')],
       'rope-snare':[dc('DEX save / escape',D.whipRopeDC(source)),value('Reach','15 ft.'),value('Tether','20 ft.')],
       'rope-takedown':[dc('STR save',D.whipRopeDC(source))],
@@ -103,6 +104,14 @@
       'magic-block':[value('MagBlock',signed(D.skillMod('MagBlock',source))),value('Range','15 ft.'),value('Duration','12 seconds / 2 rounds'),value('Check DC','DM sets DC')],
       'life-transfer':[value('Range','Touch'),value('Uses',`${Math.max(0,1-(source.classes.occultist?.resources?.lifeTransfer||0))}/1 · Short Rest`),...(level>=12?[value('Unwilling target','Up to half its maximum HP')]:[])]
     };
+    const attack = D.featureAttack(record.id,source);
+    if(attack) {
+      const base=explicit[record.id] || [];
+      if(!attack.weapon)return [...base,value('Weapon',attack.weapons.length?'Choose weapon in details':'Equip an eligible weapon')];
+      return [...base,value('Weapon',attack.weapon.name),value('Hit',signed(attack.weapon.hit)),
+        value(attack.key==='line-attack'?'First hit':'Damage',attack.damage),
+        ...(attack.key==='line-attack'?[value('Later hits',attack.laterDamage)]:[]),value('Range',attack.range)];
+    }
     if(explicit[record.id])return explicit[record.id];
     const text=label(record.fullText || record.summary || record.desc || '');
     const parts=[...new Set(text.match(/\b\d+d\d+(?:\s*[+−-]\s*\d+)?|\b\d+(?:\/\d+)?\s*ft\.?|\b\d+\s*(?:minutes?|hours?|rounds?|days?)\b|\bDC\s*\d+/gi)||[])];

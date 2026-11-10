@@ -27,6 +27,7 @@
   const preparedCount = source => known(source).filter(spell => Number(spell.level) > 0 && !alwaysPrepared(spell) && prepared(spell, source)).length;
   function castStatus(spell, source) {
     if (!spell || !known(source).some(value => value.id === spell.id)) return { ok: false, reason: 'spell' };
+    if (source.character.deathSaves?.dead || Number(source.character.exhaustion) >= 6) return { ok: false, reason: 'incapacitated' };
     if (Number(source.character.hp.current) <= 0 || window.DND2024Rules?.isIncapacitated(source.character.conditions)) return { ok: false, reason: 'incapacitated' };
     if (!prepared(spell, source)) return { ok: false, reason: 'prepared' };
     const level = Number(spell.level) || 0;

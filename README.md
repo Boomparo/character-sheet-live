@@ -64,3 +64,11 @@ CHROMIUM_PATH=/path/to/chromium LILI_JSON_PATH=/path/to/Lili_169.json node tests
 - All new presentation modules are precached for offline use. The version update preserves the existing character storage keys and schema.
 
 Validation: `node --test tests/*.test.js`; `node tests/browser-v10.cjs`; `node tests/features-browser-v10.cjs` (the browser scripts require Playwright and optionally `CHROMIUM_PATH`). Feature browser checks cover desktop/mobile grouping, nested disclosure, original-name search, starred rules, complete English feature/science/spell/relic displays and current numbers. The main browser suite also verifies the V10.1.5 cache upgrade, import, character isolation and offline operation.
+
+## V10.2.2: Exhaustion and weapon-based feature attacks
+
+- Exhaustion applies once to weapon/spell attacks, custom numerical attacks, ability checks, skills, saves, Initiative and Death Saves. Damage, raw ability modifiers and Save DCs remain unchanged. Current penalties and calculation details are visible on Character and Actions. Level 6 is explicitly fatal and ordinary healing/rest cannot bypass it.
+- Line Attack, Precision Slide and Daring Strike use a character-local weapon selection shared by Actions and Features. One eligible equipped weapon is selected automatically; multiple choices require an explicit selection. Later Line Attack hits use one weapon damage die without modifiers or magic bonuses; level 11 adds the Cool die option.
+- Schema and storage keys are unchanged. Export/import, profile isolation, rest, Undo, cache upgrade and offline use are covered by regression tests.
+
+Rules: [D&D 2024 Exhaustion](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary#ExhaustionCondition); Treasure Hunter feature definitions in the supplied campaign source.

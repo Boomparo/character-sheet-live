@@ -71,6 +71,9 @@
   function mod(abilityKey, value) { return S.modifier(ability(abilityKey, value)); }
   function conditions(value) { return state(value).character.conditions || []; }
   function exhaustion(value) { return Math.max(0, Math.min(6, number(state(value).character.exhaustion, 0))); }
+  function d20Penalty(value) { return Rules.exhaustionPenalty(exhaustion(value)); }
+  function exhaustionParts(value) { const penalty = d20Penalty(value); return penalty ? [['Exhaustion', signed(penalty)]] : []; }
+  function abilityCheckMod(key, value) { return mod(key, value) + d20Penalty(value); }
 
   function inventory(value) {
     const gear = state(value).character.gear || {};
@@ -505,6 +508,19 @@
     return mod(abilityKey, source) + (isSaveProficient(abilityKey, source) ? pb(source) : 0) + itemSaveBonus(abilityKey, source) + relicSaveBonus(abilityKey, source) + Rules.exhaustionPenalty(exhaustion(source));
   }
 
+  function saveBreakdown(key, value) {
+    const source = state(value), items = itemSaveBonus(key, source), relics = relicSaveBonus(key, source);
+    return { value: saveMod(key, source), parts: [[key, signed(mod(key, source))],
+      ...(isSaveProficient(key, source) ? [['Proficiency Bonus', signed(pb(source))]] : []),
+      ...(items ? [['Equipped items', signed(items)]] : []), ...(relics ? [['Prepared relics', signed(relics)]] : []), ...exhaustionParts(source) ] };
+  }
+  function deathSaveBreakdown(value) {
+    const source = state(value), items = itemSaveBonus('death', source), relics = relicSaveBonus('death', source);
+    const bonus = items + relics + d20Penalty(source);
+    return { value: bonus, target: Math.max(2, 10 - bonus), parts: [
+      ...(items ? [['Equipped items', signed(items)]] : []), ...(relics ? [['Prepared relics', signed(relics)]] : []), ...exhaustionParts(source) ] };
+  }
+
   function whipRopeDC(value) { const source = state(value); return 8 + pb(source) + mod('DEX', source) + itemDcBonus('whipRope', source) + relicDcBonus('whipRope', source); }
   function relicDC(value) { const source = state(value); return 8 + pb(source) + mod('INT', source) + itemDcBonus('relic', source) + relicDcBonus('relic', source); }
 
@@ -539,6 +555,7 @@
     const penalty = Rules.exhaustionSpeedPenalty(exhaustion(source)); if (penalty) parts.push(['Exhaustion', `−${penalty} ft.`]);
     const loadPenalty = encumbrance(source).speedPenalty; if (loadPenalty) parts.push(['Encumbrance', `−${loadPenalty} ft.`]);
     if (Rules.speedIsZero(conditions(source))) parts.push(['Condition', 'Speed is fixed at 0']);
+    if (exhaustion(source) >= 6) parts.push(['Exhaustion 6', 'Dead']);
     return { value: speed(source), parts };
   }
 
@@ -614,6 +631,11 @@
     const source = state(value);
     const status = skillStatus(name, source);
     return mod(SKILLS[name], source) + (status ? pb(source) * status : 0) + Rules.exhaustionPenalty(exhaustion(source));
+  }
+  function skillBreakdown(name, value) {
+    const source = state(value), training = skillStatus(name, source);
+    return { value: skillMod(name, source), parts: [[SKILLS[name], signed(mod(SKILLS[name], source))],
+      ...(training ? [[training === 2 ? 'Expertise' : 'Proficiency Bonus', signed(pb(source) * training)]] : []), ...exhaustionParts(source) ] };
   }
 
   function fixedInitiative(value) {
@@ -900,14 +922,14 @@
       const firearm = !!item.firearm || (item.tags || []).includes('firearm') || (/bullet/i.test(ammoType) && /ranged/i.test(`${item.category || ''} ${raw.weapon_range || ''}`));
       const effects = Origin.backgroundFeat(source) === 'Savage Attacker' ? [{ name: 'Savage Attacker', source: Origin.BACKGROUND.name, summary: Origin.BACKGROUND.feats['Savage Attacker'].description }] : [];
       return {
-        ...item, ability: abilityKey, hit: mod(abilityKey, source) + pb(source) + enhancement,
+        ...item, ability: abilityKey, hit: mod(abilityKey, source) + pb(source) + enhancement + d20Penalty(source),
         damage: `${dice}${damageModifier ? ` ${signed(damageModifier)}` : ''}${type ? ` ${type}` : ''}`,
         headerDamage: `${dice}${damageModifier ? signed(damageModifier) : ''}`, damageDice: dice, damageModifier, damageType: type,
         mastery: activeMastery, masteryProperty, masterySources,
         masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || '' : '',
         ammunitionType: ammoType, firearm,
         rangeText: String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' ? '15 ft.' : weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
-        attackBreakdown: [['Ability', `${abilityKey} ${signed(mod(abilityKey, source))}`], ['Proficiency Bonus', signed(pb(source))], ...(enhancement ? [['Weapon bonuses', signed(enhancement)]] : [])]
+        attackBreakdown: [['Ability', `${abilityKey} ${signed(mod(abilityKey, source))}`], ['Proficiency Bonus', signed(pb(source))], ...(enhancement ? [['Weapon bonuses', signed(enhancement)]] : []), ...exhaustionParts(source)]
       };
     });
   }
@@ -919,6 +941,29 @@
       source: item.name, group: 'custom', summary: item.actionSummary || item.description || item.notes || '',
       damage: item.actionDamage || '', ability: item.attackAbility || '', isAttack: !!item.actionIsAttack
     }));
+  }
+
+  function featureWeaponKey(id) {
+    return ({ 'improved-attack-slide': 'line-attack', 'improved-daring': 'daring-strike', 'superior-daring': 'daring-strike' })[id] || id;
+  }
+  function featureAttack(id, value) {
+    const source = state(value), key = featureWeaponKey(id);
+    if (source.character.classKey !== 'treasureHunter' || !['line-attack', 'precision-slide', 'daring-strike', 'snatch-item', 'at-right-moment', 'extra-attack'].includes(key)) return null;
+    const weapons = weaponAttacks(source).filter(weapon => {
+      if (key === 'snatch-item') return canonicalWeaponName(weapon).toLowerCase() === 'whip';
+      return key !== 'line-attack' || (!weapon.firearm && !/ranged/i.test(`${weapon.category || ''} ${weapon.raw?.weapon_range || ''}`) && !weaponProperties(weapon).some(property => /^Ammunition/i.test(property)));
+    });
+    const selectedId = source.ui.featureWeapons?.[key];
+    const weapon = weapons.find(entry => entry.id === selectedId) || (!selectedId && weapons.length === 1 ? weapons[0] : null);
+    const die = T.coolDie(level(source)), count = key === 'daring-strike' ? (level(source) >= 17 ? 3 : level(source) >= 13 ? 2 : 1) : 1;
+    const extraDice = ['precision-slide', 'daring-strike'].includes(key) ? `${count}${die}` : '';
+    const oneDie = weapon?.damageDice?.match(/\d+d(\d+)/i);
+    const laterDice = oneDie ? `1d${oneDie[1]}` : '';
+    const options = key === 'line-attack' ? [...new Set([laterDice, ...(level(source) >= 11 ? [`1${die}`] : [])].filter(Boolean))] : [];
+    return { key, weapons, weapon, extraDice, laterDice: options,
+      damage: weapon ? `${weapon.headerDamage}${extraDice ? ` + ${extraDice}` : ''}${weapon.damageType ? ` ${weapon.damageType}` : ''}` : '',
+      laterDamage: weapon && key === 'line-attack' ? `${options.join(' or ') || 'Weapon die not specified'}${weapon.damageType ? ` ${weapon.damageType}` : ''}` : '',
+      range: weapon ? (key === 'line-attack' ? weapon.rangeText.split(' · ')[0] : weapon.rangeText) : '' };
   }
 
   function relicMax(entry, value) {
@@ -984,20 +1029,31 @@
   }
   function spellAttack(value) {
     const source = state(value);
-    return pb(source) + mod('INT', source) + itemDcBonus('spell', source);
+    return pb(source) + mod('INT', source) + itemDcBonus('spell', source) + d20Penalty(source);
+  }
+  function spellAttackBreakdown(value) {
+    const source = state(value), items = itemDcBonus('spell', source);
+    return { value: spellAttack(source), parts: [['INT', signed(mod('INT', source))], ['Proficiency Bonus', signed(pb(source))],
+      ...(items ? [['Equipped items', signed(items)]] : []), ...exhaustionParts(source)] };
+  }
+  // Stored custom/imported attack bonuses are base values. Adjust only the display copy.
+  function actionRoll(record, value) {
+    if (!record || record.hit == null || String(record.hit).trim() === '' || !Number.isFinite(Number(record.hit))) return record;
+    return { ...record, isAttack: true, hit: signed(Number(record.hit) + d20Penalty(value)),
+      attackBreakdown: [...(record.attackBreakdown || [['Base attack', signed(Number(record.hit))]]), ...exhaustionParts(value)] };
   }
 
   window.CharacterDerived = {
-    SKILLS, ARMOR, state, level, pb, classDefinition, classState, classFeatures, spellDC, spellAttack,
+    SKILLS, ARMOR, state, level, pb, classDefinition, classState, classFeatures, spellDC, spellAttack, spellAttackBreakdown, actionRoll,
     subclassDefinition, subclassName, subclassHasSystem, featureSubclassDefinition, featureMatchesSubclass,
-    ability, mod, conditions, exhaustion, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
+    ability, mod, abilityCheckMod, conditions, exhaustion, d20Penalty, exhaustionParts, inventory, activeItems, itemStackWeight, effectiveItemLocation, sizeCarryMultiplier, carriedWeight, encumbrance,
     isConsumable, containerLoad, inventoryIssues, tacticalRecommendations,
     walletCp, cpCoins, currencySummary, isItemEquipped, isItemActive, isWeapon, isArmor, isShield, itemKeyStats,
     weaponRange, weaponProperties, weaponAmmunitionType, isAmmunitionItem, ammunitionCount, ammunitionEntriesForWeapon, ammunitionSummaryForWeapon,
     relicState, relicDefinition, activeRelics, armorClass, armorBreakdown, initiative, initiativeBreakdown, isSaveProficient, saveProficiencySources,
-    saveMod, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
-    choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, fixedInitiative, fixedSave, fixedSkill,
-    fixedAttack, effectiveRollMode, situationalRollHints, weaponMasteryProperty, weaponMasteryEntries, proficiencyEntries, proficiencyLists, damageDefenseEntries, damageDefenses, weaponAttacks, itemActions, weaponEnhancement,
+    saveMod, saveBreakdown, deathSaveBreakdown, whipRopeDC, relicDC, dcBreakdown, baseSpeed, speed, speedBreakdown, hpMax, hp, hpBreakdown, hitDice,
+    choices, classSkillProficiencies, skillProficiencySources, skillStatus, skillMod, skillBreakdown, fixedInitiative, fixedSave, fixedSkill,
+    fixedAttack, effectiveRollMode, situationalRollHints, weaponMasteryProperty, weaponMasteryEntries, proficiencyEntries, proficiencyLists, damageDefenseEntries, damageDefenses, weaponAttacks, itemActions, weaponEnhancement, featureAttack, featureWeaponKey,
     relicMax, choiceRequirements, originActions, signed
   };
   window.V7SDerived = window.CharacterDerived;

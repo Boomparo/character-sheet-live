@@ -6,7 +6,7 @@
   const KEY = 'character-sheet-v9';
   const LEGACY_KEYS = ['character-sheet-v7s', 'occultist-sheet-v1'];
   const SCHEMA_VERSION = 20;
-  const APP_VERSION = '10.2.1-english-features';
+  const APP_VERSION = '10.2.2-combat-rolls';
   const HISTORY_LIMIT = 20;
   const A = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'];
   const ITEM_LOCATIONS = ['equipped', 'worn', 'carried', 'back', 'ground', 'storage'];
@@ -479,6 +479,7 @@
     ui.campaignView = ['directory', 'journal', 'relations'].includes(ui.campaignView) ? ui.campaignView : 'directory';
     ui.featureView = ui.featureView === 'progression' ? 'progression' : 'available';
     ui.featureFilter = ['all', 'active', 'passive', 'subclass', 'favorites'].includes(ui.featureFilter) ? ui.featureFilter : 'all';
+    ui.featureWeapons = Object.fromEntries(Object.entries(ui.featureWeapons && typeof ui.featureWeapons === 'object' && !Array.isArray(ui.featureWeapons) ? ui.featureWeapons : {}).filter(([key, value]) => ['line-attack', 'precision-slide', 'daring-strike', 'snatch-item', 'at-right-moment', 'extra-attack'].includes(key) && typeof value === 'string'));
     ui.actionFilter = ['all', 'attack', 'action', 'bonus', 'reaction', 'other'].includes(ui.actionFilter) ? ui.actionFilter : 'all';
     ui.pageId = PAGE_IDS.includes(sourcePageId) ? sourcePageId : PAGE_IDS[ui.page];
     ui.page = PAGE_IDS.indexOf(ui.pageId);

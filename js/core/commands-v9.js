@@ -42,9 +42,10 @@
   }
   function recordDeathSave(roll) {
     const character = S.get().character, natural = Math.floor(number(roll));
-    if (character.hp.current > 0 || character.deathSaves.stable || character.deathSaves.dead || natural < 1 || natural > 20) return false;
+    if (character.hp.current > 0 || character.deathSaves.stable || character.deathSaves.dead || D.exhaustion() >= 6 || natural < 1 || natural > 20) return false;
     if (natural === 20) { heal(1); return true; }
-    return setDeathSave(natural >= 10 ? 'successes' : 'failures', character.deathSaves[natural >= 10 ? 'successes' : 'failures'] + (natural === 1 ? 2 : 1));
+    const kind = natural !== 1 && natural + D.deathSaveBreakdown().value >= 10 ? 'successes' : 'failures';
+    return setDeathSave(kind, character.deathSaves[kind] + (natural === 1 ? 2 : 1));
   }
   function stabilize() {
     if (S.get().character.hp.current > 0 || S.get().character.deathSaves.dead) return false;
@@ -95,7 +96,7 @@
 
   function heal(amount) {
     let result = null;
-    if (S.get().character.deathSaves.dead) return { healed: 0, current: 0, max: D.hpMax(S.get()), reason: 'dead' };
+    if (S.get().character.deathSaves.dead || D.exhaustion() >= 6) return { healed: 0, current: S.get().character.hp.current, max: D.hpMax(S.get()), reason: 'dead' };
     update(state => {
       const max = D.hpMax(state);
       const before = Math.max(0, number(state.character.hp.current));
@@ -157,6 +158,7 @@
   function rest(kind, options = {}) {
     const long = kind === 'long' || kind === 'LR';
     const source = S.get();
+    if (source.character.deathSaves.dead || D.exhaustion(source) >= 6) return { ok: false, reason: 'dead' };
     if (number(source.character.hp.current) <= 0) return { ok: false, reason: 'zero-hp' };
     const config = {
       hitDice: Math.max(0, Math.floor(number(options.hitDice, 0))),

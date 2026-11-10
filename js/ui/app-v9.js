@@ -115,18 +115,29 @@
   function featureDamageBadge(id, source = state()) {
     if (id === 'precision-slide') return `+${coolDice(1, source)} DMG`;
     if (id === 'line-attack') {
-      const weapon = D.weaponAttacks(source).filter(attack => !attack.firearm && !/ranged/i.test(`${attack.category || ''} ${attack.raw?.weapon_range || ''}`))
-        .sort((a, b) => String(b.damageDice || '').localeCompare(String(a.damageDice || ''), undefined, { numeric: true }))[0];
-      if (!weapon || weapon.damageDice === '—') return 'EQUIP MELEE WEAPON FOR DMG';
-      const nextDice = [weapon.damageDice];
-      if (D.level(source) >= 11 && coolDice(1, source) !== weapon.damageDice) nextDice.push(coolDice(1, source));
-      return `1ST ${weapon.headerDamage} · NEXT ${nextDice.join(' / ')}`;
+      const attack = D.featureAttack(id, source), weapon = attack?.weapon;
+      if (!weapon) return attack?.weapons.length ? 'CHOOSE MELEE WEAPON' : 'EQUIP MELEE WEAPON FOR DMG';
+      return `${weapon.name} · 1ST ${weapon.headerDamage} · NEXT ${attack.laterDice.join(' / ') || '?'}`;
     }
     if (['daring-strike', 'improved-daring', 'superior-daring'].includes(id)) {
       const count = D.level(source) >= 17 ? 3 : D.level(source) >= 13 ? 2 : 1;
       return `+${coolDice(count, source)} DMG`;
     }
     return '';
+  }
+
+  function featureAttackNumbers(id, source) {
+    const attack = D.featureAttack(id, source);
+    return attack?.weapon ? { hit: S.signed(attack.weapon.hit), ability: attack.weapon.ability,
+      damage: attack.damage, damageType: attack.weapon.damageType, rangeText: attack.range,
+      attackBreakdown: attack.weapon.attackBreakdown } : {};
+  }
+  function featureWeaponPicker(id, source) {
+    const attack = D.featureAttack(id, source);
+    if (!attack) return '';
+    const name = ruleLabel(T.features.find(feature=>feature.id===attack.key)?.name || id);
+    if (!attack.weapons.length) return `<p class="muted">${attack.key==='line-attack'?'Equip a melee weapon to calculate Line Attack.':'Equip an eligible weapon to calculate this attack.'}</p>`;
+    return `<label class="feature-weapon-picker">Weapon for ${esc(name)}<select data-feature-weapon="${esc(attack.key)}" aria-label="Weapon for ${esc(name)}"><option value="">Choose weapon…</option>${attack.weapons.map(weapon=>`<option value="${esc(weapon.id)}" ${weapon.id===attack.weapon?.id?'selected':''}>${esc(weapon.name)} · HIT ${S.signed(weapon.hit)} · ${esc(weapon.damage)}</option>`).join('')}</select></label>`;
   }
 
   function compactDamage(value) {
@@ -260,7 +271,7 @@
       ${section('Cool Points', `<div class="resource-row cool-resource-row"><div><div class="cool-dots">${coolDots || '<span class="muted">Available at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span></div><b>${coolLeft}/${coolTotal}</b></div>`, '', 'cool-section')}
       ${luck}
       ${section('Abilities & Saves', `<div class="ability-grid">${abilityCards}</div><small class="muted top-gap">A/D is shown only when active. A forced state is locked to its condition or relic.</small>`, '', 'abilities-section')}
-      ${section('Conditions', `<div class="condition-strip">${conditionChips || '<span class="muted">No active conditions.</span>'}${c.exhaustion ? `<span class="chip brass">Exhaustion ${c.exhaustion}</span>` : ''}</div><div class="inline-form top-gap"><select id="conditionSelect"><option value="">Add condition…</option>${conditionOptions}</select><button type="button" class="small-btn" data-condition-add>+</button></div><div class="tiny-controls top-gap"><button type="button" data-exhaustion-adjust="-1">Exhaustion −</button><button type="button" data-exhaustion-adjust="1">Exhaustion +</button></div>`, '', 'conditions-section')}
+      ${section('Conditions', `<div class="condition-strip">${conditionChips || (c.exhaustion ? '' : '<span class="muted">No active conditions.</span>')}${exhaustionNotice(source)}</div><div class="inline-form top-gap"><select id="conditionSelect"><option value="">Add condition…</option>${conditionOptions}</select><button type="button" class="small-btn" data-condition-add>+</button></div><div class="tiny-controls top-gap"><button type="button" data-exhaustion-adjust="-1">Exhaustion −</button><button type="button" data-exhaustion-adjust="1">Exhaustion +</button></div>`, '', 'conditions-section')}
       ${section('Defenses', `${defenseRows}<div class="inline-form top-gap"><select id="defenseKind"><option value="resistance">Resistance</option><option value="immunity">Immunity</option><option value="vulnerability">Vulnerability</option><option value="conditionImmunity">Condition Immunity</option></select><select id="defenseValue">${damageOptions}</select><button type="button" class="small-btn" data-defense-add>+</button></div><template id="damageDefenseOptions">${damageOptions}</template><template id="conditionDefenseOptions">${conditionImmunityOptions}</template>`, '', 'defenses-section')}
     `;
   }
@@ -299,8 +310,8 @@
         ammunition, rangeText: weapon.rangeText, propertiesText: weapon.propertiesText
       });
     });
-    records.push(...D.itemActions(source));
-    (source.character.spells || []).forEach(spell => records.push({ ...spell, id: `spell:${spell.id}`, source: spell.source || 'Spell', group: 'spells', isAttack: !!spell.isAttack }));
+    records.push(...D.itemActions(source).map(record => D.actionRoll(record, source)));
+    (source.character.spells || []).forEach(spell => records.push(D.actionRoll({ ...spell, id: `spell:${spell.id}`, source: spell.source || 'Spell', group: 'spells', isAttack: !!spell.isAttack }, source)));
     if (source.character.classKey === 'treasureHunter' && D.subclassHasSystem('relics', source)) {
       for (const entry of source.classes.treasureHunter.relics || []) {
         if (!entry.prepared) continue;
@@ -317,7 +328,8 @@
       T.features.filter(feature => feature.level <= D.level(source) && feature.action !== 'Passive' && feature.action !== 'Resource' && D.featureMatchesSubclass(feature, source)).forEach(feature => records.push({
         id: feature.id, name: feature.name, action: feature.action, source: `Treasure Hunter ${feature.level}`, group: 'treasure',
         summary: feature.fullText || feature.summary, cost: Number(feature.cost) || 0, parentId: feature.parentId || FEATURE_PARENT[feature.id] || '',
-        featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id), damageBonus: featureDamageBadge(feature.id, source)
+        featureId: feature.id, uses: feature.uses || 0, isAttack: ATTACK_FEATURES.has(feature.id), damageBonus: featureDamageBadge(feature.id, source),
+        ...featureAttackNumbers(feature.id, source)
       }));
     } else {
       const definition = D.classDefinition(source), classState = D.classState(source);
@@ -332,7 +344,7 @@
     }
     records.push(...D.originActions(source));
     records.push(...coreActions());
-    (source.character.customActions || []).forEach(action => records.push({ ...action, group: action.group || 'custom', source: action.source || 'Custom' }));
+    (source.character.customActions || []).forEach(action => records.push(D.actionRoll({ ...action, group: action.group || 'custom', source: action.source || 'Custom' }, source)));
     return records;
   }
 
@@ -356,11 +368,17 @@
     }).join('')}</div>`;
   }
   window.CharacterWeaponTags = weaponTags;
+  function exhaustionNotice(source) {
+    const level = D.exhaustion(source);
+    return level ? `<button type="button" class="exhaustion-notice" data-stat-detail="exhaustion">Exhaustion ${level} · ${level >= 6 ? 'DEAD' : `D20 Tests ${S.signed(D.d20Penalty(source))} · Speed −${Rules.exhaustionSpeedPenalty(level)} ft.`}</button>` : '';
+  }
+  window.CharacterExhaustionNotice = exhaustionNotice;
   function deathSavesPanel(source) {
     if (Number(source.character.hp.current) > 0) return '';
-    const saves = source.character.deathSaves, disabled = saves.stable || saves.dead;
+    const saves = source.character.deathSaves, dead = saves.dead || D.exhaustion(source) >= 6, disabled = saves.stable || dead;
+    const roll = D.deathSaveBreakdown(source);
     const dots = (key, label) => `<div class="death-save-line ${key}"><b>${label}</b><div>${[1,2,3].map(index => `<button type="button" class="death-dot ${index <= saves[key] ? 'filled' : ''}" data-death-save="${key}" data-count="${index <= saves[key] ? index - 1 : index}" aria-label="${label} ${index} of 3" aria-pressed="${index <= saves[key]}" ${disabled?'disabled':''}></button>`).join('')}</div></div>`;
-    return `<section class="death-saves-panel"><div class="section-head"><h2>DEATH SAVING THROWS</h2><span class="chip ${saves.dead?'danger':''}">${saves.dead?'DEAD':saves.stable?'STABLE':'UNCONSCIOUS'}</span></div>${dots('successes','Successes')}${dots('failures','Failures')}<label class="check-label"><input id="hpCriticalHit" type="checkbox"> Next damage at 0 HP is a Critical Hit (2 failures)</label><div class="death-save-actions"><button type="button" class="small-btn" data-death-natural="1" ${disabled?'disabled':''}>Natural 1 · 2 failures</button><button type="button" class="small-btn primary" data-death-natural="20" ${disabled?'disabled':''}>Natural 20 · 1 HP</button><button type="button" class="small-btn" data-death-stabilize ${disabled?'disabled':''}>Stabilize</button><button type="button" class="small-btn ghost" data-history-undo>Undo</button></div><small>10+ succeeds. Three successes: Stable. Three failures: Dead. Healing or stabilization clears both counters.</small></section>`;
+    return `<section class="death-saves-panel"><div class="section-head"><h2>DEATH SAVING THROWS</h2><span class="chip ${dead?'danger':''}">${dead?'DEAD':saves.stable?'STABLE':'UNCONSCIOUS'}</span></div>${dots('successes','Successes')}${dots('failures','Failures')}<div class="death-roll-entry"><label>Natural d20<input type="number" id="deathSaveRoll" min="1" max="20" step="1" inputmode="numeric" placeholder="1–20" ${disabled?'disabled':''}></label><button type="button" class="small-btn primary" data-death-record ${disabled?'disabled':''}>Record roll</button></div><label class="check-label"><input id="hpCriticalHit" type="checkbox"> Next damage at 0 HP is a Critical Hit (2 failures)</label><div class="death-save-actions"><button type="button" class="small-btn" data-death-natural="1" ${disabled?'disabled':''}>Natural 1 · 2 failures</button><button type="button" class="small-btn primary" data-death-natural="20" ${disabled?'disabled':''}>Natural 20 · 1 HP</button><button type="button" class="small-btn" data-death-stabilize ${disabled?'disabled':''}>Stabilize</button><button type="button" class="small-btn ghost" data-history-undo>Undo</button></div><small>Death Save ${S.signed(roll.value)}${roll.parts.length ? ` (${roll.parts.map(([name,value])=>`${esc(name)} ${esc(value)}`).join(' · ')})` : ''}. ${roll.target > 19 ? 'Only a natural 20 succeeds.' : `Natural ${roll.target}+ succeeds.`} Natural 1: 2 failures; natural 20: regain 1 HP. Three successes: Stable. Three failures: Dead. Healing or stabilization clears both counters.</small></section>`;
   }
 
   function actionCard(record, depth = 0) {
@@ -378,7 +396,7 @@
     const detailUse = !record.cost && (record.resource || record.uses) ? `<button type="button" class="small-btn primary" data-action-use="${esc(record.id)}">Use</button>` : '';
     return `<article class="row-card action-row ${open ? 'open' : ''} depth-${Math.min(depth, 3)}" data-search-anchor="action:${esc(record.id)}">
       <div class="row-main-wrap ${record.cost ? 'has-cool-cost' : ''} ${record.ammunition ? 'has-ammunition' : ''}"><button type="button" class="row-main" data-action-toggle="${esc(record.id)}"><span><span class="action-title-line"><strong>${esc(ruleLabel(record.name))}</strong>${record.damageBonus ? `<b class="damage-bonus-chip">${esc(record.damageBonus)}</b>` : ''}</span><span class="row-meta"><span class="badge ${actionFilterKey(record.action)}">${esc(actionCode(record.action))}</span><span>${esc(ruleLabel(record.source || ''))}</span>${record.ammunition ? `<span class="ammo-type-inline">AMMO · ${esc(record.ammunition.type || 'ammunition')}</span>` : ''}${record.rangeText ? `<span class="attack-range">RANGE ${esc(record.rangeText)}</span>` : ''}${record.damageType ? `<span class="attack-type">${esc(record.damageType)}</span>` : ''}${record.mastery ? `<span class="mastery-inline">MASTERY · ${esc(record.mastery)}</span>` : ''}</span></span><span class="action-numbers">${hasHit ? `<b>HIT ${esc(record.hit)}</b>` : ''}${record.damage ? `<b>DMG ${esc(record.headerDamage || compactDamage(record.damage))}</b>` : ''}${roll}<i>›</i></span></button>${coolButton}${ammunitionButton}<button type="button" class="favorite ${favorite ? 'on' : ''}" data-action-favorite="${esc(record.id)}" aria-label="Favorite">★</button></div>
-      <div class="row-detail">${record.featureId?featureFactsHtml(T.features.find(feature=>feature.id===record.featureId)||record,source):''}${record.weaponId ? weaponTags(record) : ''}${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
+      <div class="row-detail">${record.featureId?featureWeaponPicker(record.featureId,source)+featureFactsHtml(T.features.find(feature=>feature.id===record.featureId)||record,source):''}${record.weaponId ? weaponTags(record) : ''}${mastery}${effects}${fullDamage}${record.summary ? `<div class="action-summary">${rulesText(record.summary, source)}</div>` : (!mastery && !effects ? 'No additional rules text.' : '')}${breakdown}${actionResource(record)}<div class="detail-actions">${detailUse}${record.custom ? `<button type="button" class="small-btn danger" data-custom-action-remove="${esc(record.id)}">Delete</button>` : ''}</div></div>
     </article>`;
   }
 
@@ -454,7 +472,7 @@
       if (!groupRecords.length && (key !== 'custom' || selectedFilter !== 'all')) continue;
       body += `<section class="action-group"><h3>${esc(label)}</h3><div class="list">${groupRecords.length ? renderActionTree(groupRecords) : '<div class="empty">No custom actions yet.</div>'}</div>${key === 'custom' ? '<button type="button" class="small-btn primary top-gap" data-new-action>+ Custom Action</button>' : ''}</section>`;
     }
-    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span><button type="button" class="tactics-open" data-tactics-open aria-label="Next Move tactical suggestions" title="Next Move"><span>✦</span></button></div><div class="action-filter-bar" aria-label="Filter actions">${filters}</div><div class="action-groups">${body || '<div class="empty">No actions match this filter.</div>'}</div>`;
+    $('#actionsPage').innerHTML = `${pageIntro('ACTIONS', 'Fast gameplay actions')}<div class="actions-resource-bar"><span><small>COOL POINTS</small><b>${coolLeft}/${coolTotal}</b></span><div class="cool-dots">${coolDots || '<span class="muted">Unlocks at level 2</span>'}</div><span class="cool-die-label"><small>Cool die</small><b>${coolDice(1, source)}</b></span><button type="button" class="tactics-open" data-tactics-open aria-label="Next Move tactical suggestions" title="Next Move"><span>✦</span></button></div>${exhaustionNotice(source)}<div class="action-filter-bar" aria-label="Filter actions">${filters}</div><div class="action-groups">${body || '<div class="empty">No actions match this filter.</div>'}</div>`;
   }
 
   function renderSkills() {
@@ -533,7 +551,7 @@
     return `<article class="row-card feature-card ${open?'open':''} depth-${Math.min(depth,3)} ${feature.level>D.level(source)?'locked':''} ${choiceMissing?'choice-missing':''}" data-search-anchor="feature:${esc(feature.id)}" data-feature-family="${family?esc(feature.id):''}">
       <div class="row-main-wrap"><button type="button" class="row-main" data-feature-toggle="${esc(feature.id)}" aria-expanded="${open}"><span><strong>${esc(ruleLabel(feature.name))}</strong><span class="row-meta"><span>Level ${feature.level}</span>${subclassFeature?`<span>${esc(ruleLabel(subclassFeature.name))}</span>`:''}${feature.kind==='origin'?'<span>Origin</span>':''}<span class="badge">${esc(action)}</span>${family&&members.length>1?`<span>${members.length-1} related rules</span>`:''}${choiceMissing?'<span class="feature-choice-alert">Choice needed</span>':''}</span></span><span aria-hidden="true">${open?'⌄':'›'}</span></button><button type="button" class="favorite ${favorite?'on':''}" data-feature-favorite="${esc(feature.id)}" aria-label="Favorite ${esc(ruleLabel(feature.name))}" aria-pressed="${favorite}">★</button></div>
       ${feature.level<=D.level(source)?featureFactsHtml(feature,source,family):''}
-      <div class="row-detail">${rulesText(feature.fullText||feature.summary,source)}${source.character.classKey==='treasureHunter'?featureChoices(feature,source):''}${use}${children?`<div class="feature-related"><h3>Related rules and upgrades</h3>${children}</div>`:''}</div>
+      <div class="row-detail">${feature.level<=D.level(source)?featureWeaponPicker(feature.id,source):''}${rulesText(feature.fullText||feature.summary,source)}${source.character.classKey==='treasureHunter'?featureChoices(feature,source):''}${use}${children?`<div class="feature-related"><h3>Related rules and upgrades</h3>${children}</div>`:''}</div>
     </article>`;
   }
 
@@ -1233,15 +1251,19 @@
       const condition = Rules.CONDITIONS[key];
       title = Rules.conditionName(key);
       body = condition ? `<div class="condition-detail">${nl(condition.summary)}</div><div class="detail-actions"><button type="button" class="small-btn danger" data-condition-remove="${esc(key)}">Remove condition</button></div>` : '<span class="muted">No rules text available.</span>';
+    } else if (kind === 'exhaustion') {
+      const level = D.exhaustion(source);
+      title = `Exhaustion ${level}`;
+      body = `<div class="formula-list"><div class="formula-row"><span>All D20 Tests</span><b>${S.signed(D.d20Penalty(source))}</b></div><div class="formula-row"><span>Speed reduction</span><b>−${Rules.exhaustionSpeedPenalty(level)} ft.</b></div></div><p>Applies to weapon attacks, spell attacks, ability checks (including Initiative), skills and saving throws (including Death Saves). Each level gives −2 to D20 Tests and −5 ft. Speed. Damage, ability modifiers and Save DCs stay unchanged.</p><p>A completed Long Rest removes 1 level. At level 6, you die.${level >= 6 ? ' This character has reached level 6 Exhaustion.' : ''}</p>`;
     } else if (kind === 'save') {
       title = `${key} Save ${D.saveMod(key, source) == null ? 'AUTO FAIL' : S.signed(D.saveMod(key, source))}`; rollKind = 'save';
       const grants = D.saveProficiencySources(key, source);
-      body = `<div class="formula-list"><div class="formula-row"><span>Ability</span><b>${S.signed(D.mod(key, source))}</b></div><div class="formula-row"><span>Proficiency</span><b>${D.isSaveProficient(key, source) ? S.signed(D.pb(source)) : '—'}</b></div></div>${grants.length ? `<div class="source-list">${grants.map(grant => `<span class="source-entry"><span>Saving Throw proficiency</span><small>${esc(grant)}</small></span>`).join('')}</div>` : ''}`;
+      body = `<div class="formula-list">${D.saveBreakdown(key,source).parts.map(([label,value])=>`<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}<div class="formula-row"><span>${esc(key)} ability check</span><b>${S.signed(D.abilityCheckMod(key,source))}</b></div></div>${grants.length ? `<div class="source-list">${grants.map(grant => `<span class="source-entry"><span>Saving Throw proficiency</span><small>${esc(grant)}</small></span>`).join('')}</div>` : ''}`;
     } else if (kind === 'skill') {
       title = `${key} ${S.signed(D.skillMod(key, source))}`; rollKind = 'skill';
       const grants = D.skillProficiencySources(key, source);
       const situational = D.situationalRollHints('skill', key, source);
-      body = `<div class="formula-list"><div class="formula-row"><span>Ability (${D.SKILLS[key]})</span><b>${S.signed(D.mod(D.SKILLS[key], source))}</b></div><div class="formula-row"><span>Training</span><b>${D.skillStatus(key, source) === 2 ? 'Expertise' : D.skillStatus(key, source) === 1 ? 'Proficient' : 'None'}</b></div></div>${situational.length ? `<div class="situational-list">${situational.map(hint => `<div><b>${situationalIndicator([hint])} Situational ${hint.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}</b><span>${esc(hint.condition)}</span><small>${esc(ruleLabel(hint.source))}</small></div>`).join('')}</div>` : ''}<div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(ruleLabel(entry.source))}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
+      body = `<div class="formula-list">${D.skillBreakdown(key,source).parts.map(([label,value])=>`<div class="formula-row"><span>${esc(label)}</span><b>${esc(value)}</b></div>`).join('')}</div>${situational.length ? `<div class="situational-list">${situational.map(hint => `<div><b>${situationalIndicator([hint])} Situational ${hint.mode === 'advantage' ? 'Advantage' : 'Disadvantage'}</b><span>${esc(hint.condition)}</span><small>${esc(ruleLabel(hint.source))}</small></div>`).join('')}</div>` : ''}<div class="source-list">${grants.map(entry => `<span class="source-entry"><span>${entry.status === 2 ? 'Expertise' : 'Proficiency'}</span><small>${esc(ruleLabel(entry.source))}</small></span>`).join('') || '<span class="muted">No proficiency grant.</span>'}</div><button type="button" class="small-btn primary top-gap" data-open-builder>Edit proficiencies & masteries</button>`;
     }
     if (rollKind) {
       const effective = D.effectiveRollMode(rollKind, rollKey, source);
@@ -1757,6 +1779,11 @@
     if (!button) return;
     if (button.dataset.deathSave) { C.setDeathSave(button.dataset.deathSave, button.dataset.count); return; }
     if (button.dataset.deathNatural) { C.recordDeathSave(button.dataset.deathNatural); return; }
+    if (button.hasAttribute('data-death-record')) {
+      const input = $('#deathSaveRoll');
+      if (!input || !input.value || !input.checkValidity()) { input?.reportValidity(); return; }
+      C.recordDeathSave(input.value); return;
+    }
     if (button.hasAttribute('data-death-stabilize')) { C.stabilize(); return; }
 
     const parentDialog = button.closest('dialog');
@@ -2045,6 +2072,11 @@
 
   function onChange(event) {
     const target = event.target;
+    if (target.dataset.featureWeapon) {
+      const key = target.dataset.featureWeapon, attack = D.featureAttack(key, state());
+      if (attack && (!target.value || attack.weapons.some(weapon=>weapon.id===target.value))) C.setUi('featureWeapons', {...state().ui.featureWeapons, [key]:target.value});
+      return;
+    }
     if (target.id==='featureFilter') { C.setUi('featureFilter',target.value); return; }
     if (target.dataset.tacticsField) {
       C.setUi('tactics', { ...(state().ui.tactics || {}), [target.dataset.tacticsField]: target.value });
@@ -2201,7 +2233,7 @@
         exhaustion: long ? $('#restExhaustion').checked : false,
         cool: $('#restCool').checked, features: $('#restFeatures').checked, relics: $('#restRelics')?.checked || false
       });
-      if (!result.ok) { toast('You cannot finish a rest at 0 HP.', 'warn'); return; }
+      if (!result.ok) { toast(result.reason === 'dead' ? 'A dead character cannot finish a rest.' : 'You cannot finish a rest at 0 HP.', 'warn'); return; }
       closeDialog('#restDialog');
       toast(long ? `Long Rest completed${result.hitDiceRecovered ? ` · ${result.hitDiceRecovered} Hit Dice recovered` : ''}.` : `Short Rest completed${result.hitDiceSpent ? ` · ${result.hitDiceSpent}d10 spent · ${result.healing} HP rolled` : ''}.`);
       return;
