@@ -764,7 +764,14 @@
         next.containerId = String(next.containerId || '');
         if (next.containerId && !validContainerMove(state, id, next.containerId)) delete next.containerId;
       }
+      const previousType = item.itemType;
       Object.assign(item, next);
+      if(next.itemType && next.itemType!==previousType) {
+        const gear=state.character.gear;
+        gear.weapons=gear.weapons.filter(entry=>entry.id!==id);
+        gear.armor=gear.armor.filter(entry=>entry.id!==id);
+        if(!gear.inventory.some(entry=>entry.id===id))gear.inventory.push(item);
+      }
       if (item.containerId) {
         const parent = findItem(state, item.containerId);
         if (parent) item.location = parent.location;

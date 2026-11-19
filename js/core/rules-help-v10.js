@@ -39,7 +39,7 @@
   };
   function property(value) {
     const name = String(value || '').replace(/\s*\(.*/, '').trim();
-    return properties[name] || window.DND2024Rules?.MASTERY_PROPERTIES?.[name] || '';
+    return window.CharacterEquipment?.PROPERTY_HELP?.[name] || window.CharacterEquipment?.MASTERY_HELP?.[name] || properties[name] || window.DND2024Rules?.MASTERY_PROPERTIES?.[name] || '';
   }
   window.CharacterRulesHelp = { text, property, properties };
 })();

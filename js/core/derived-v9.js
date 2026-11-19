@@ -721,7 +721,7 @@
       const label = property ? `${weapon} · ${property}` : weapon;
       let entry = entries.find(item => item.weapon.toLowerCase() === String(weapon).toLowerCase());
       if (!entry) {
-        entry = { name: label, weapon, property, description: property ? Rules.MASTERY_PROPERTIES[property] || '' : 'Set the weapon’s Mastery Property in Gear.', sources: [] };
+        entry = { name: label, weapon, property, description: property ? Rules.MASTERY_PROPERTIES[property] || window.CharacterEquipment?.MASTERY_HELP?.[property] || '' : 'Set the weapon’s Mastery Property in Gear.', sources: [] };
         entries.push(entry);
       }
       if (grantSource && !entry.sources.includes(grantSource)) entry.sources.push(grantSource);
@@ -911,7 +911,8 @@
       const canonicalName = canonicalWeaponName(item);
       const dice = String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' && level(source) >= 1 ? '1d6' : item.damage || raw.damage?.damage_dice || '—';
       const type = item.damageType || raw.damage?.damage_type?.name || '';
-      const damageModifier = mod(abilityKey, source) + weaponDamageBonus(item);
+      const damageAbility = item.damageAbility === 'none' || (item.damageAbility !== 'auto' && weaponProperties(item).some(value => /^Firearm\*?$/i.test(value.trim()))) ? 0 : mod(abilityKey, source);
+      const damageModifier = damageAbility + weaponDamageBonus(item);
       const masteryProperty = item.mastery || raw.mastery?.name || raw.mastery || Rules.weaponMastery(canonicalName) || '';
       const selectedMasteries = choices(source).weaponMasteries || [];
       const masterySources = [];
@@ -925,8 +926,9 @@
         ...item, ability: abilityKey, hit: mod(abilityKey, source) + pb(source) + enhancement + d20Penalty(source),
         damage: `${dice}${damageModifier ? ` ${signed(damageModifier)}` : ''}${type ? ` ${type}` : ''}`,
         headerDamage: `${dice}${damageModifier ? signed(damageModifier) : ''}`, damageDice: dice, damageModifier, damageType: type,
+        damageBreakdown: [['Weapon dice', dice], ['Ability damage', signed(damageAbility)], ...(weaponDamageBonus(item) ? [['Weapon bonuses', signed(weaponDamageBonus(item))]] : [])],
         mastery: activeMastery, masteryProperty, masterySources,
-        masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || '' : '',
+        masteryDescription: activeMastery ? Rules.MASTERY_PROPERTIES?.[activeMastery] || window.CharacterEquipment?.MASTERY_HELP?.[activeMastery] || '' : '',
         ammunitionType: ammoType, firearm,
         rangeText: String(canonicalName).toLowerCase() === 'whip' && source.character.classKey === 'treasureHunter' ? '15 ft.' : weaponRange(item), propertiesText: weaponProperties(item).join(', '), effects,
         attackBreakdown: [['Ability', `${abilityKey} ${signed(mod(abilityKey, source))}`], ['Proficiency Bonus', signed(pb(source))], ...(enhancement ? [['Weapon bonuses', signed(enhancement)]] : []), ...exhaustionParts(source)]

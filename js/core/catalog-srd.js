@@ -13,7 +13,7 @@
     ['weapon', 'WEAPON'], ['ranged', 'RANGED'], ['melee', 'MELEE'], ['simple', 'SIMPLE'], ['martial', 'MARTIAL'],
     ['finesse', 'FINESSE'], ['light', 'LIGHT'], ['loading', 'LOADING'], ['two-handed', 'TWO-HANDED'],
     ['ammunition', 'AMMUNITION'], ['firearm', 'FIREARM'], ['armor', 'ARMOR'], ['tool', 'TOOL'],
-    ['container', 'CONTAINER'], ['homebrew', 'HOME BREW']
+    ['gunslinger', 'GUNSLINGER'], ['container', 'CONTAINER'], ['homebrew', 'HOME BREW']
   ];
   let memory = null;
 
@@ -192,11 +192,11 @@
 
   function mergeCatalog(items) {
     const byName = new Map();
-    for (const item of [...items, ...CURATED_FALLBACK, ...(Homebrew?.items?.() || [])]) {
+    for (const item of [...items, ...CURATED_FALLBACK, ...(Homebrew?.items?.() || []), ...(window.CharacterEquipment?.BASE_ITEMS || [])]) {
       const key = String(item.name || '').toLowerCase();
       if (!byName.has(key) || item.userHomebrew) byName.set(key, item);
     }
-    return [...byName.values(), ...HOME_BREW_ITEMS];
+    return [...byName.values(), ...HOME_BREW_ITEMS, ...(window.CharacterEquipment?.GUNSLINGER_ITEMS || [])];
   }
 
   async function load(force = false) {
@@ -230,7 +230,7 @@
     const tags = (filters.tags || []).map(slug).filter(Boolean);
     const starting = !!filters.starting;
     return sort(all.filter(item => {
-      const haystack = `${item.name} ${item.category} ${item.rarity} ${item.description} ${(item.tags || []).join(' ')}`.toLowerCase();
+      const haystack = `${item.name} ${item.source} ${item.category} ${item.rarity} ${item.description} ${(item.tags || []).join(' ')}`.toLowerCase();
       return (!needle || haystack.includes(needle)) && (rarity === 'all' || item.rarity === rarity) &&
         (kind === 'all' || item.kind === kind) && tags.every(tag => (item.tags || []).includes(tag)) &&
         (!starting || item.kind === 'Equipment');
@@ -262,6 +262,9 @@
     if (item.category) push(out, 'Category', item.category);
     if (item.attunement) push(out, 'Attunement', 'Required');
     if (item.weight != null || raw.weight != null) push(out, item.weightEstimated ? 'Weight (estimated)' : 'Weight', `${item.weightEstimated ? '~' : ''}${item.weight ?? raw.weight} lb.`);
+    push(out, 'Source', item.source);
+    if (item.baseItemName) push(out, 'Base item', item.baseItemName);
+    if (item.damageAbility === 'none' || propertyNames(item.properties).includes('Firearm')) push(out, 'Damage ability', item.damageAbility === 'auto' ? 'Uses attack ability (explicit override)' : 'None · Firearm property');
     push(out, 'Weapon Category', raw.weapon_category);
     push(out, 'Weapon Range', raw.weapon_range);
     if (raw.damage?.damage_dice) push(out, 'Damage', `${raw.damage.damage_dice} ${raw.damage.damage_type?.name || ''}`.trim());
@@ -301,7 +304,7 @@
   window.V7SItemCatalog = {
     load, search, sort, displayFields, cloneForInventory, priceLabel, costInCp, deriveTags,
     RARITY_ORDER, TAG_OPTIONS, HOME_BREW_ITEMS, CURATED_FALLBACK,
-    attribution: "D&D SRD 5.2.1 (CC BY 4.0); firearm variants: Luky's campaign rules"
+    attribution: "D&D SRD 5.2.1 (CC BY 4.0); Gunslinger firearms: Mage Hand Press 2024; campaign variants: Luky's rules"
   };
   Homebrew?.subscribe?.(() => { memory = null; });
 })();

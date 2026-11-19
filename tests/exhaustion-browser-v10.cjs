@@ -47,8 +47,8 @@ async function verify(browser, base, mobile) {
   const sword = page.locator('[data-search-anchor="action:weapon:sword"]');
   assert.match(await sword.locator('.action-numbers').innerText(), /HIT \+3/);
   assert.match(await sword.locator('.action-numbers').innerText(), /DMG 1d8\+4/);
-  await sword.locator('[data-action-toggle]').click(); await sword.locator('.attack-breakdown summary').click();
-  assert.match(await sword.locator('.attack-breakdown').innerText(), /Exhaustion\s+-4/);
+  await sword.locator('[data-action-toggle]').click(); await sword.locator('.attack-breakdown > summary').filter({hasText:/^Attack calculation$/}).click();
+  assert.match(await sword.locator('.attack-breakdown').filter({hasText:'Attack calculation'}).innerText(), /Exhaustion\s+-4/);
   const line = page.locator('[data-search-anchor="action:line-attack"]');
   assert.match(await line.innerText(), /CHOOSE MELEE WEAPON/);
   await line.locator('[data-action-toggle]').click();

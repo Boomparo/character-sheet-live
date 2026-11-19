@@ -72,3 +72,12 @@ Validation: `node --test tests/*.test.js`; `node tests/browser-v10.cjs`; `node t
 - Schema and storage keys are unchanged. Export/import, profile isolation, rest, Undo, cache upgrade and offline use are covered by regression tests.
 
 Rules: [D&D 2024 Exhaustion](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary#ExhaustionCondition); Treasure Hunter feature definitions in the supplied campaign source.
+
+## V10.3.0: Gunslinger equipment and previews before adding
+
+- Added 15 firearms and six ammunition packs from Mage Hand Press’s public 2024 Gunslinger equipment tables. SRD Pistol and Musket already exist. Same-name campaign variants retain their own IDs and source labels. Only the explicit Firearm property suppresses ability damage; DEX still affects attack rolls, Exhaustion still affects hit, and magic damage bonuses still apply. No Gunslinger class feature is granted by another class’s level.
+- Custom items can start from 51 offline SRD weapon/armor profiles or campaign/Gunslinger profiles. A unique base name such as Adamantine Dagger fills type, damage, properties, range, Mastery and weight for a new draft. Existing items require an explicit Apply action; manual edits are preserved. Material and enchantment rules remain editable in Notes.
+- Catalog items expand to full rules, properties and current attack/damage previews before Add/Buy. Relics, class features and Builder origin feats have searchable read-only browsers. Explicit Add or Builder Save is required to change gameplay state. Shared Homebrew definitions exclude character attunement, placement and ordinary quantities.
+- Validation: `node --test tests/*.test.js`, existing browser suites, and `node tests/equipment-browser-v10.cjs` in desktop/mobile layouts, including offline catalogs and PWA upgrade from V10.2.2.
+
+Equipment source: [Mage Hand Press Firearms (2024)](https://magehandpress.com/2025/02/firearms-5e2024/). SRD mechanical profiles: [5e-bits/5e-database, 2024 equipment](https://github.com/5e-bits/5e-database/blob/main/src/2024/en/5e-SRD-Equipment.json), SRD 5.2.1, CC BY 4.0.
